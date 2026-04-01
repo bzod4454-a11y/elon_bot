@@ -103,6 +103,7 @@
 
         .btn-secondary:active {
             background: #f5f5f5;
+            transform: scale(0.97);
         }
 
         .btn-danger {
@@ -116,6 +117,10 @@
 
         .btn-success {
             background: #34c759;
+        }
+
+        .btn-success:active {
+            background: #2db54f;
         }
 
         .form-group {
@@ -154,6 +159,11 @@
             background: white;
         }
 
+        .form-group textarea {
+            min-height: 90px;
+            resize: vertical;
+        }
+
         .photo-upload {
             background: #f8f9fc;
             border: 2px dashed #c6c6c8;
@@ -176,7 +186,8 @@
             margin-top: 12px;
         }
 
-        .photo-preview img {
+        .photo-preview img,
+        .photo-preview video {
             width: 100%;
             aspect-ratio: 1 / 1;
             object-fit: cover;
@@ -319,8 +330,12 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .price-display {
@@ -341,6 +356,31 @@
             font-size: 12px;
             margin-top: 6px;
             display: none;
+        }
+
+        .error {
+            border-color: #ff3b30 !important;
+        }
+
+        .media-container {
+            position: relative;
+        }
+
+        .media-badge {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 10px;
+        }
+
+        .form-note {
+            font-size: 12px;
+            color: #8e8e93;
+            margin-top: 6px;
         }
 
         .checkbox-group {
@@ -373,6 +413,23 @@
 
         .location-btn {
             margin-top: 10px;
+            width: 100%;
+        }
+
+        .channels-list {
+            margin-bottom: 20px;
+        }
+
+        .warning-text {
+            color: #ff9500;
+        }
+
+        .success-text {
+            color: #34c759;
+        }
+
+        .error-text {
+            color: #ff3b30;
         }
 
         .pagination {
@@ -389,6 +446,10 @@
             border-radius: 30px;
             font-size: 14px;
             cursor: pointer;
+        }
+
+        .pagination button:active {
+            background: #f5f5f5;
         }
 
         .search-box {
@@ -417,10 +478,6 @@
             color: white;
             cursor: pointer;
         }
-
-        .warning-text {
-            color: #ff9500;
-        }
     </style>
 </head>
 <body>
@@ -430,7 +487,6 @@
         <div id="loadingText" style="color: white;">Yuklanmoqda...</div>
     </div>
 
-    <!-- PAGE 1: BOSH SAHIFA -->
     <div id="page1" class="page active">
         <div class="page-number">1/12</div>
         <div class="page-header">
@@ -443,7 +499,6 @@
         <button class="btn btn-secondary" onclick="goToPage('page11')">🤝 Biz bilan hamkorlik</button>
     </div>
 
-    <!-- PAGE 2: KATEGORIYA -->
     <div id="page2" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">2/12</div>
@@ -454,19 +509,19 @@
         <button class="btn" onclick="selectCategory('property')">🏠 Ko'chmas mulk</button>
         <button class="btn" onclick="selectCategory('phone')">📱 Telefon</button>
         <button class="btn" onclick="selectCategory('car')">🚗 Avtomobil</button>
-        <button class="btn" onclick="selectCategory('mixed')">🔀 Aralash</button>
+        <button class="btn" onclick="selectCategory('mixed')">🔀 Aralash (boshqa tovarlar)</button>
     </div>
 
-    <!-- PAGE 3: TELEFON -->
     <div id="page3-phone" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">3/12</div>
         <div class="page-header">
             <h1>📱 Telefon ma'lumotlari</h1>
+            <p>Maksimum 4 ta rasm (har biri 5MB gacha)</p>
         </div>
         <div class="form-group">
             <label>📱 Modeli <span class="warning-text">*</span></label>
-            <input type="text" id="phoneModel" placeholder="Masalan: iPhone 14 Pro">
+            <input type="text" id="phoneModel" placeholder="Masalan: iPhone 14 Pro" maxlength="100">
         </div>
         <div class="form-group">
             <label>🛠 Holati</label>
@@ -479,11 +534,15 @@
         </div>
         <div class="form-group">
             <label>🎨 Rangi</label>
-            <input type="text" id="phoneColor" placeholder="Masalan: qora, oq">
+            <input type="text" id="phoneColor" placeholder="Masalan: qora, oq" maxlength="30">
+        </div>
+        <div class="form-group">
+            <label>📦 Karopka va hujjatlar</label>
+            <input type="text" id="phoneBox" placeholder="Karopka bor, hujjat yo'q" maxlength="100">
         </div>
         <div class="form-group">
             <label>💸 Narxi ($) <span class="warning-text">*</span></label>
-            <input type="number" id="phonePrice" placeholder="Masalan: 800" min="0">
+            <input type="number" id="phonePrice" placeholder="Masalan: 800" min="0" step="1">
         </div>
         <div class="form-group">
             <label>♻️ Obmenga?</label>
@@ -492,50 +551,53 @@
                 <option value="ha">Ha</option>
             </select>
             <div id="exchangePhoneContainer" class="hidden" style="margin-top: 12px;">
-                <label>🔄 Qaysi telefonga?</label>
-                <input type="text" id="exchangePhoneModel" placeholder="iPhone 12 Pro...">
+                <label>🔄 Qaysi telefonga almashmoqchisiz?</label>
+                <input type="text" id="exchangePhoneModel" placeholder="iPhone 12 Pro, Samsung S21..." maxlength="100">
             </div>
         </div>
         <div class="form-group">
             <label>📍 Joylashuv <span class="warning-text">*</span></label>
-            <input type="text" id="phoneLocation" placeholder="Masalan: Toshkent, Chilonzor">
+            <input type="text" id="phoneLocation" placeholder="Masalan: Toshkent, Chilonzor" maxlength="200">
+            <input type="hidden" id="phoneLocationCoords">
             <button type="button" class="btn btn-secondary location-btn" onclick="getLocation('phone')">🗺️ Lokatsiya olish</button>
         </div>
         <div class="form-group">
             <label>📞 Aloqa <span class="warning-text">*</span></label>
-            <input type="tel" id="phoneTel1" placeholder="Telefon raqam" style="margin-bottom: 10px;">
-            <input type="text" id="phoneTg" placeholder="Telegram username">
+            <div class="form-note">Kamida 1 tasini to'ldiring</div>
+            <input type="tel" id="phoneTel1" placeholder="Telefon raqam +998901234567" maxlength="20" style="margin-bottom: 10px;">
+            <input type="text" id="phoneTg" placeholder="Telegram username @username" maxlength="50">
         </div>
         <div class="form-group">
             <label>📄 Qo'shimcha ma'lumot</label>
-            <textarea id="phoneExtra" placeholder="Tez sotiladi..." rows="3"></textarea>
+            <textarea id="phoneExtra" placeholder="Tez sotiladi, muzokara mumkin..." maxlength="500"></textarea>
         </div>
         <div class="photo-upload" onclick="document.getElementById('phonePhotos').click()">
-            📸 Rasmlar yuklash (maks 4 ta)
+            📸 Rasmlar yuklash (ixtiyoriy)
+            <div class="form-note">Maksimum 4 ta rasm, har biri 5MB gacha</div>
         </div>
-        <input type="file" id="phonePhotos" multiple accept="image/*" class="hidden" onchange="handleMediaUpload(event, 'phonePreview', 'phone', 4)">
+        <input type="file" id="phonePhotos" multiple accept="image/jpeg,image/png,image/webp" class="hidden" onchange="handleMediaUpload(event, 'phonePreview', 'phone', 4)">
         <div id="phonePreview" class="photo-preview"></div>
         <button class="btn" onclick="validateAndSavePhone()">✅ Davom etish</button>
     </div>
 
-    <!-- PAGE 3: AVTOMOBIL -->
     <div id="page3-car" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">3/12</div>
         <div class="page-header">
             <h1>🚗 Avtomobil ma'lumotlari</h1>
+            <p>Maksimum 10 ta rasm (har biri 5MB gacha)</p>
         </div>
         <div class="form-group">
             <label>🚗 Modeli <span class="warning-text">*</span></label>
-            <input type="text" id="carModel" placeholder="Masalan: Chevrolet Malibu">
+            <input type="text" id="carModel" placeholder="Masalan: Chevrolet Malibu 2" maxlength="100">
         </div>
         <div class="form-group">
             <label>📆 Yil</label>
-            <input type="number" id="carYear" placeholder="2020">
+            <input type="number" id="carYear" placeholder="2020" min="1900" max="2025">
         </div>
         <div class="form-group">
             <label>📏 Probeg (km)</label>
-            <input type="number" id="carMileage" placeholder="50000">
+            <input type="number" id="carMileage" placeholder="50000" min="0">
         </div>
         <div class="form-group">
             <label>⛽ Yoqilg'i turi</label>
@@ -543,41 +605,46 @@
                 <label><input type="checkbox" value="benzin"> Benzin</label>
                 <label><input type="checkbox" value="dizel"> Dizel</label>
                 <label><input type="checkbox" value="metan"> Metan</label>
+                <label><input type="checkbox" value="propan"> Propan</label>
                 <label><input type="checkbox" value="elektr"> Elektr</label>
+                <label><input type="checkbox" value="gibrid"> Gibrid</label>
             </div>
         </div>
         <div class="form-group">
             <label>💰 Narxi ($) <span class="warning-text">*</span></label>
-            <input type="number" id="carPrice" placeholder="15000" min="0">
+            <input type="number" id="carPrice" placeholder="Masalan: 15000" min="0" step="1">
         </div>
         <div class="form-group">
             <label>📍 Joylashuv <span class="warning-text">*</span></label>
-            <input type="text" id="carLocation" placeholder="Masalan: Toshkent">
+            <input type="text" id="carLocation" placeholder="Masalan: Toshkent" maxlength="200">
+            <input type="hidden" id="carLocationCoords">
             <button type="button" class="btn btn-secondary location-btn" onclick="getLocation('car')">🗺️ Lokatsiya olish</button>
         </div>
         <div class="form-group">
             <label>📞 Aloqa <span class="warning-text">*</span></label>
+            <div class="form-note">Kamida 1 tasini to'ldiring</div>
             <input type="tel" id="carTel1" placeholder="Telefon raqam" style="margin-bottom: 10px;">
             <input type="text" id="carTg" placeholder="Telegram username">
         </div>
         <div class="form-group">
             <label>📄 Qo'shimcha ma'lumot</label>
-            <textarea id="carExtra" placeholder="Kraskasi, holati..." rows="3"></textarea>
+            <textarea id="carExtra" placeholder="Kraskasi, holati, qo'shimcha jihozlar..." maxlength="500"></textarea>
         </div>
         <div class="photo-upload" onclick="document.getElementById('carPhotos').click()">
-            📸 Rasmlar yuklash (maks 10 ta)
+            📸 Rasmlar yuklash (ixtiyoriy)
+            <div class="form-note">Maksimum 10 ta rasm</div>
         </div>
-        <input type="file" id="carPhotos" multiple accept="image/*" class="hidden" onchange="handleMediaUpload(event, 'carPreview', 'car', 10)">
+        <input type="file" id="carPhotos" multiple accept="image/jpeg,image/png,image/webp" class="hidden" onchange="handleMediaUpload(event, 'carPreview', 'car', 10)">
         <div id="carPreview" class="photo-preview"></div>
         <button class="btn" onclick="validateAndSaveCar()">✅ Davom etish</button>
     </div>
 
-    <!-- PAGE 3: KO'CHMAS MULK -->
     <div id="page3-property" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">3/12</div>
         <div class="page-header">
             <h1>🏠 Ko'chmas mulk</h1>
+            <p>Maksimum 10 ta rasm</p>
         </div>
         <div class="form-group">
             <label>🏠 Turi <span class="warning-text">*</span></label>
@@ -587,94 +654,105 @@
                 <option value="hovli">Hovli</option>
                 <option value="yer">Yer uchastkasi</option>
                 <option value="ofis">Ofis</option>
+                <option value="do'kon">Do'kon</option>
             </select>
         </div>
         <div class="form-group">
             <label>📍 Manzil <span class="warning-text">*</span></label>
-            <input type="text" id="propLocation" placeholder="To'liq manzil">
+            <input type="text" id="propLocation" placeholder="To'liq manzil" maxlength="300">
+            <input type="hidden" id="propLocationCoords">
             <button type="button" class="btn btn-secondary location-btn" onclick="getLocation('property')">🗺️ Lokatsiya olish</button>
         </div>
         <div class="form-group">
-            <label>📏 Maydon (m²)</label>
-            <input type="number" id="propArea" placeholder="100">
+            <label>📏 Uy maydoni (m²)</label>
+            <input type="number" id="propArea" placeholder="100" min="0">
+        </div>
+        <div class="form-group">
+            <label>🏡 Hovli maydoni (m²)</label>
+            <input type="number" id="propYardArea" placeholder="200" min="0">
         </div>
         <div class="form-group">
             <label>💰 Tranzaksiya turi</label>
             <div class="radio-group">
                 <label><input type="radio" name="propTransaction" value="sotiladi" checked> Sotiladi</label>
-                <label><input type="radio" name="propTransaction" value="ijaraga"> Ijaraga</label>
+                <label><input type="radio" name="propTransaction" value="ijaraga"> Ijaraga beriladi</label>
             </div>
         </div>
         <div class="form-group">
             <label>💰 Narxi ($) <span class="warning-text">*</span></label>
-            <input type="number" id="propPrice" placeholder="50000" min="0">
+            <input type="number" id="propPrice" placeholder="50000" min="0" step="1">
         </div>
         <div class="form-group">
             <label>📞 Aloqa <span class="warning-text">*</span></label>
+            <div class="form-note">Kamida 1 tasini to'ldiring</div>
             <input type="tel" id="propTel1" placeholder="Telefon raqam" style="margin-bottom: 10px;">
             <input type="text" id="propTg" placeholder="Telegram username">
         </div>
         <div class="photo-upload" onclick="document.getElementById('propPhotos').click()">
-            📸 Rasmlar yuklash (maks 10 ta)
+            📸 Rasmlar yuklash (ixtiyoriy)
+            <div class="form-note">Maksimum 10 ta rasm</div>
         </div>
         <input type="file" id="propPhotos" multiple accept="image/*" class="hidden" onchange="handleMediaUpload(event, 'propPreview', 'property', 10)">
         <div id="propPreview" class="photo-preview"></div>
         <button class="btn" onclick="validateAndSaveProperty()">✅ Davom etish</button>
     </div>
 
-    <!-- PAGE 3: ARALASH -->
     <div id="page3-mixed" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">3/12</div>
         <div class="page-header">
             <h1>📦 Boshqa tovar</h1>
+            <p>Maksimum 10 ta rasm</p>
         </div>
         <div class="form-group">
             <label>📝 Mahsulot nomi <span class="warning-text">*</span></label>
-            <input type="text" id="mixedTitle" placeholder="Masalan: Maishiy texnika">
+            <input type="text" id="mixedTitle" placeholder="Masalan: Maishiy texnika" maxlength="200">
         </div>
         <div class="form-group">
             <label>📄 Tavsif <span class="warning-text">*</span></label>
-            <textarea id="mixedDesc" placeholder="Batafsil ma'lumot..." rows="4"></textarea>
+            <textarea id="mixedDesc" placeholder="Batafsil ma'lumot, holati..." maxlength="1000"></textarea>
         </div>
         <div class="form-group">
             <label>💰 Narxi ($) <span class="warning-text">*</span></label>
-            <input type="number" id="mixedPrice" placeholder="Narx" min="0">
+            <input type="number" id="mixedPrice" placeholder="Narx" min="0" step="1">
         </div>
         <div class="form-group">
             <label>📍 Joylashuv <span class="warning-text">*</span></label>
-            <input type="text" id="mixedLocation" placeholder="Toshkent">
+            <input type="text" id="mixedLocation" placeholder="Toshkent" maxlength="200">
+            <input type="hidden" id="mixedLocationCoords">
             <button type="button" class="btn btn-secondary location-btn" onclick="getLocation('mixed')">🗺️ Lokatsiya olish</button>
         </div>
         <div class="form-group">
             <label>📞 Aloqa <span class="warning-text">*</span></label>
+            <div class="form-note">Kamida 1 tasini to'ldiring</div>
             <input type="tel" id="mixedContact" placeholder="Telefon raqam" style="margin-bottom: 10px;">
             <input type="text" id="mixedTg" placeholder="Telegram username">
         </div>
         <div class="photo-upload" onclick="document.getElementById('mixedPhotos').click()">
-            📸 Rasmlar yuklash (maks 10 ta)
+            📸 Rasmlar yuklash (ixtiyoriy)
+            <div class="form-note">Maksimum 10 ta rasm</div>
         </div>
         <input type="file" id="mixedPhotos" multiple accept="image/*" class="hidden" onchange="handleMediaUpload(event, 'mixedPreview', 'mixed', 10)">
         <div id="mixedPreview" class="photo-preview"></div>
         <button class="btn" onclick="validateAndSaveMixed()">✅ Davom etish</button>
     </div>
 
-    <!-- PAGE 4: KANAL TANLASH -->
     <div id="page4" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">4/12</div>
         <div class="page-header">
             <h1>📢 Kanal tanlash</h1>
+            <p>E'lonni qaysi kanalda joylashtirmoqchisiz?</p>
         </div>
         <div id="channelsList" class="channels-list"></div>
     </div>
 
-    <!-- PAGE 5: TO'LOV MA'LUMOTLARI -->
     <div id="page5" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">5/12</div>
         <div class="page-header">
             <h1>💳 To'lov ma'lumotlari</h1>
+            <p>E'loningizni joylash uchun to'lov qiling</p>
         </div>
         <div id="paymentInfoContainer"></div>
         <div id="adSummary" class="card"></div>
@@ -682,7 +760,6 @@
         <button class="btn btn-secondary" onclick="goBack()">❌ Bekor qilish</button>
     </div>
 
-    <!-- PAGE 6: CHEK YUKLASH -->
     <div id="page6" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">6/12</div>
@@ -691,16 +768,16 @@
         </div>
         <div class="info-box">
             <p>💳 To'lov qilganingizdan so'ng, chek rasmini yuklang</p>
+            <p>📸 Rasmda to'lov summasi va vaqti ko'rinishi kerak</p>
         </div>
         <div class="photo-upload" onclick="document.getElementById('checkFile').click()">
             📸 Chek rasmini tanlang
         </div>
-        <input type="file" id="checkFile" accept="image/*" class="hidden" onchange="previewCheck(event)">
+        <input type="file" id="checkFile" accept="image/jpeg,image/png,image/webp" class="hidden" onchange="previewCheck(event)">
         <div id="checkPreview" class="photo-preview"></div>
         <button class="btn" id="uploadCheckBtn" disabled onclick="uploadCheck()">📤 Chekni yuborish</button>
     </div>
 
-    <!-- PAGE 7: TEKSHIRILMOQDA -->
     <div id="page7" class="page">
         <button class="back-btn" onclick="goToPage('page1')">←</button>
         <div class="page-number">7/12</div>
@@ -709,13 +786,17 @@
         </div>
         <div class="success-box">
             <p>✅ Chek muvaffaqiyatli yuklandi!</p>
+            <p>🆔 Chek ID: <span id="checkId">#XXXXX</span></p>
             <p>⏰ Tekshirish vaqti: 5-30 daqiqa</p>
+        </div>
+        <div class="card">
+            <h3>📋 E'lon ma'lumotlari</h3>
+            <div id="checkAdInfo"></div>
         </div>
         <button class="btn" onclick="goToPage('page1')">🏠 Bosh sahifa</button>
         <button class="btn btn-secondary" onclick="goToPage('page8')">📋 Mening e'lonlarim</button>
     </div>
 
-    <!-- PAGE 8: MENING E'LONLARIM -->
     <div id="page8" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">8/12</div>
@@ -727,7 +808,6 @@
         <button class="btn" onclick="goToPage('page2')">➕ Yangi e'lon</button>
     </div>
 
-    <!-- PAGE 9: E'LON TAFSILOTLARI -->
     <div id="page9" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">9/12</div>
@@ -739,22 +819,21 @@
         <button class="btn btn-secondary" onclick="goBack()">↩️ Orqaga</button>
     </div>
 
-    <!-- PAGE 10: O'CHIRISH TASDIQLASH -->
     <div id="page10" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">10/12</div>
         <div class="page-header">
             <h1>⚠️ E'lonni o'chirish</h1>
         </div>
-        <div class="info-box">
+        <div class="info-box" style="background: #ffe6e6; border-left-color: #ff3b30;">
             <p>⚠️ Diqqat! Bu amalni qaytarib bo'lmaydi!</p>
+            <p>E'lon butunlay o'chiriladi.</p>
         </div>
         <div id="deleteAdInfo" class="card"></div>
         <button class="btn btn-danger" onclick="confirmDelete()">✅ Ha, o'chirish</button>
         <button class="btn btn-secondary" onclick="goBack()">❌ Bekor qilish</button>
     </div>
 
-    <!-- PAGE 11: HAMKORLIK -->
     <div id="page11" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">11/12</div>
@@ -765,47 +844,58 @@
             <h3>📊 Statistika:</h3>
             <p>• Kunlik ko'rishlar: 10,000+</p>
             <p>• Faol foydalanuvchilar: 5,000+</p>
+            <p>• Muvaffaqiyatli bitimlar: 1,000+</p>
+        </div>
+        <div class="card">
+            <h3>💼 Hamkorlik afzalliklari:</h3>
+            <p>• Yuqori daromad</p>
+            <p>• Tez va oson</p>
+            <p>• 24/7 qo'llab-quvvatlash</p>
         </div>
         <div class="card">
             <h3>📞 Bog'lanish:</h3>
             <p>Telegram: @admin_username</p>
+            <p>Telefon: +998901234567</p>
         </div>
         <button class="btn" onclick="window.open('https://t.me/admin_username', '_blank')">📲 Admin bilan bog'lanish</button>
         <button class="btn btn-secondary" onclick="goToPage('page1')">🏠 Bosh sahifa</button>
     </div>
 
-    <!-- PAGE 12: QIDIRISH -->
     <div id="page12" class="page">
         <button class="back-btn" onclick="goBack()">←</button>
         <div class="page-number">12/12</div>
         <div class="page-header">
             <h1>🔍 Qidirish</h1>
+            <p>E'lonlarni qidirish va filtrlash</p>
         </div>
         <div class="search-box">
-            <input type="text" id="searchQuery" placeholder="Qidirish so'zi..." onkeypress="if(event.key==='Enter') searchAds(1)">
-            <button onclick="searchAds(1)">🔍 Qidirish</button>
+            <input type="text" id="searchQuery" placeholder="Qidirish so'zi..." onkeypress="if(event.key==='Enter') searchAds()">
+            <button onclick="searchAds()">🔍 Qidirish</button>
         </div>
         <div id="searchResults"></div>
         <div id="searchPagination" class="pagination"></div>
     </div>
 
     <script>
-        // ==================== TELEGRAM WEBAPP ====================
         let tg = window.Telegram.WebApp;
         tg.expand();
         tg.ready();
-        
-        // ==================== GLOBAL ====================
+        tg.enableClosingConfirmation();
+
         let API_URL = '';
         let API_KEY = '';
+        
         let urlParams = new URLSearchParams(window.location.search);
         let user_id = urlParams.get('user_id');
         let api_url_param = urlParams.get('api_url');
+        let ad_id_param = urlParams.get('ad_id');
+        let channel_id_param = urlParams.get('channel_id');
         
         let userData = tg.initDataUnsafe?.user || { 
             id: user_id || 999999, 
             first_name: 'User', 
-            username: 'user'
+            username: 'user',
+            last_name: ''
         };
         
         let currentCategory = '';
@@ -813,10 +903,10 @@
         let selectedChannel = null;
         let pageHistory = ['page1'];
         let mediaUrls = {};
-        let currentAdId = null;
+        let currentAdId = ad_id_param || null;
+        let currentChannelId = channel_id_param || null;
         let channels = [];
-        
-        // ==================== API URL ====================
+
         function getApiUrl() {
             if (api_url_param) {
                 localStorage.setItem('api_url', api_url_param);
@@ -826,52 +916,64 @@
             if (stored) return stored;
             return window.location.origin + '/api';
         }
-        
+
         function getApiKey() {
             let stored = localStorage.getItem('api_key');
             if (stored) return stored;
             return 'tpP08NpmZlWescoDPJH4KR5M7hDLO0M5OZ_iWmbNaI0';
         }
-        
-        // ==================== API CALL ====================
-        async function callAPI(endpoint, method = 'GET', body = null) {
+
+        async function callAPI(endpoint, method = 'GET', body = null, isFormData = false) {
             let headers = { 'X-API-Key': API_KEY };
-            if (body) {
+            if (!isFormData && body) {
                 headers['Content-Type'] = 'application/json';
             }
             let options = { method, headers };
             if (body) {
-                options.body = JSON.stringify(body);
+                options.body = isFormData ? body : JSON.stringify(body);
             }
             
             try {
                 let res = await fetch(API_URL + endpoint, options);
-                return await res.json();
+                let json = await res.json();
+                return json;
             } catch (error) {
-                console.error('API error:', error);
+                console.error('API call error:', error);
                 return { success: false, error: error.message };
             }
         }
-        
-        // ==================== INIT ====================
+
         async function init() {
             API_URL = getApiUrl();
             API_KEY = getApiKey();
+            
+            console.log('API_URL:', API_URL);
+            console.log('User:', userData);
+            
             document.getElementById('loading').classList.add('hidden');
             
             if (userData.username) {
-                document.querySelectorAll('[id$="Tg"], [id$="tg"]').forEach(inp => {
-                    if (!inp.value) inp.value = '@' + userData.username;
-                });
+                autoFillTelegram('@' + userData.username);
+            }
+            
+            if (ad_id_param && channel_id_param) {
+                currentAdId = parseInt(ad_id_param);
+                currentChannelId = parseInt(channel_id_param);
+                goToPage('page6');
             }
             
             tg.BackButton.onClick(goBack);
             tg.BackButton.hide();
         }
-        
+
         window.addEventListener('load', init);
-        
-        // ==================== NAVIGATION ====================
+
+        function autoFillTelegram(val) {
+            document.querySelectorAll('[id$="Tg"], [id$="tg"]').forEach(inp => {
+                if (!inp.value) inp.value = val;
+            });
+        }
+
         function goToPage(pageId) {
             let cur = document.querySelector('.page.active');
             if (cur && cur.id !== pageId) pageHistory.push(cur.id);
@@ -883,7 +985,7 @@
             if (pageId === 'page4') loadChannels();
             if (pageId === 'page8') loadMyAds(1);
         }
-        
+
         function goBack() {
             if (pageHistory.length > 1) {
                 pageHistory.pop();
@@ -895,20 +997,19 @@
                 tg.close();
             }
         }
-        
+
         function selectCategory(cat) {
             currentCategory = cat;
             goToPage('page3-' + cat);
         }
-        
+
         function toggleExchangeField() {
             let exchange = document.getElementById('phoneExchange').value;
             let container = document.getElementById('exchangePhoneContainer');
             if (exchange === 'ha') container.classList.remove('hidden');
             else container.classList.add('hidden');
         }
-        
-        // ==================== MEDIA UPLOAD ====================
+
         async function handleMediaUpload(event, previewId, category, maxCount) {
             let files = Array.from(event.target.files);
             if (files.length > maxCount) {
@@ -917,16 +1018,27 @@
                 return;
             }
             
+            for (let f of files) {
+                if (f.size > 50 * 1024 * 1024) {
+                    tg.showAlert(`${f.name} 50MB dan katta!`);
+                    return;
+                }
+                if (!f.type.startsWith('image/')) {
+                    tg.showAlert(`Faqat rasm fayllari ruxsat etilgan!`);
+                    return;
+                }
+            }
+
             let previewDiv = document.getElementById(previewId);
             let uploadedUrls = [];
-            
+
             for (let file of files) {
                 let formData = new FormData();
                 formData.append('media', file);
                 formData.append('category', category);
                 formData.append('user_id', userData.id);
-                
                 showLoading('Rasm yuklanmoqda...');
+
                 try {
                     let res = await fetch(API_URL + '/upload-media', {
                         method: 'POST',
@@ -934,29 +1046,35 @@
                         body: formData
                     });
                     let data = await res.json();
-                    if (data.success && data.file) {
+                    if (data.success && data.file && data.file.url) {
                         uploadedUrls.push(data.file.url);
+                        
                         let imgDiv = document.createElement('div');
+                        imgDiv.className = 'media-container';
                         let img = document.createElement('img');
                         img.src = URL.createObjectURL(file);
+                        img.style.width = '100%';
                         imgDiv.appendChild(img);
                         previewDiv.appendChild(imgDiv);
+                    } else {
+                        throw new Error('Upload failed');
                     }
                 } catch (e) {
-                    console.error(e);
+                    console.error('Media upload error:', e);
+                    tg.showAlert('Rasm yuklanmadi, keyinroq urinib ko\'ring');
                 }
+
                 hideLoading();
             }
-            
+
             if (!mediaUrls[category]) mediaUrls[category] = [];
             mediaUrls[category].push(...uploadedUrls);
             event.target.value = '';
         }
-        
-        // ==================== LOCATION ====================
+
         function getLocation(cat) {
             if (!navigator.geolocation) {
-                tg.showAlert('Lokatsiya qo\'llab-quvvatlanmaydi');
+                tg.showAlert('Brauzeringiz lokatsiyani qo\'llab-quvvatlamaydi');
                 return;
             }
             showLoading('Lokatsiya olinmoqda...');
@@ -964,66 +1082,85 @@
                 (pos) => {
                     let lat = pos.coords.latitude;
                     let lon = pos.coords.longitude;
-                    let locInput = document.getElementById(cat + 'Location');
-                    if (locInput && !locInput.value) {
-                        locInput.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-                    }
+                    document.getElementById(cat + 'LocationCoords').value = `${lat},${lon}`;
+
+                    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
+                        .then(r => r.json())
+                        .then(d => {
+                            let locInput = document.getElementById(cat + 'Location');
+                            if (locInput && !locInput.value) {
+                                locInput.value = d.display_name?.split(',')[0] || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                            }
+                        })
+                        .catch(() => {});
                     hideLoading();
                     tg.showAlert('✅ Lokatsiya olindi!');
                 },
                 (err) => {
                     hideLoading();
-                    tg.showAlert('❌ Lokatsiya olish rad etildi');
+                    tg.showAlert('❌ Lokatsiya olish rad etildi: ' + err.message);
                 }
             );
         }
-        
-        // ==================== VALIDATION ====================
-        function validateAndSavePhone() {
+
+        function validatePhone() {
             let model = document.getElementById('phoneModel').value.trim();
             let price = document.getElementById('phonePrice').value.trim();
             let loc = document.getElementById('phoneLocation').value.trim();
             let tel = document.getElementById('phoneTel1').value.trim();
             let tgU = document.getElementById('phoneTg').value.trim();
-            
-            if (!model) { tg.showAlert('Modelni kiriting'); return; }
-            if (!price || price <= 0) { tg.showAlert('Narxni kiriting'); return; }
-            if (!loc) { tg.showAlert('Joylashuvni kiriting'); return; }
-            if (!tel && !tgU) { tg.showAlert('Aloqa ma\'lumotini kiriting'); return; }
-            
+
+            if (!model) { tg.showAlert('Modelni kiriting'); return false; }
+            if (!price || price <= 0) { tg.showAlert('Narxni kiriting'); return false; }
+            if (!loc) { tg.showAlert('Joylashuvni kiriting'); return false; }
+            if (!tel && !tgU) { tg.showAlert('Kamida 1 ta telefon yoki Telegram username kiriting'); return false; }
+
             currentAdData = {
                 action: 'submit_ad',
                 category: 'phone',
                 phone_model: model,
                 condition: document.getElementById('phoneCondition').value,
                 color: document.getElementById('phoneColor').value,
+                box: document.getElementById('phoneBox').value,
                 price: price,
                 exchange: document.getElementById('phoneExchange').value,
                 exchange_phone_model: document.getElementById('exchangePhoneModel')?.value || '',
                 location: loc,
+                latitude: null,
+                longitude: null,
                 tel1: tel || null,
                 telegram_username: tgU || null,
                 extra: document.getElementById('phoneExtra').value,
                 media_files: mediaUrls.phone || []
             };
-            goToPage('page4');
+            let coords = document.getElementById('phoneLocationCoords').value;
+            if (coords) {
+                let [lat, lon] = coords.split(',').map(Number);
+                currentAdData.latitude = lat;
+                currentAdData.longitude = lon;
+            }
+            return true;
         }
-        
+
+        function validateAndSavePhone() {
+            if (validatePhone()) goToPage('page4');
+        }
+
         function validateAndSaveCar() {
             let model = document.getElementById('carModel').value.trim();
             let price = document.getElementById('carPrice').value.trim();
             let loc = document.getElementById('carLocation').value.trim();
             let tel = document.getElementById('carTel1').value.trim();
             let tgU = document.getElementById('carTg').value.trim();
-            
+
             if (!model) { tg.showAlert('Modelni kiriting'); return; }
             if (!price || price <= 0) { tg.showAlert('Narxni kiriting'); return; }
             if (!loc) { tg.showAlert('Joylashuvni kiriting'); return; }
-            if (!tel && !tgU) { tg.showAlert('Aloqa ma\'lumotini kiriting'); return; }
-            
+            if (!tel && !tgU) { tg.showAlert('Kamida 1 ta aloqa ma\'lumoti kerak'); return; }
+
             let fuelTypes = [];
             document.querySelectorAll('#carFuelGroup input:checked').forEach(cb => fuelTypes.push(cb.value));
-            
+
             currentAdData = {
                 action: 'submit_ad',
                 category: 'car',
@@ -1038,23 +1175,29 @@
                 extra: document.getElementById('carExtra').value,
                 media_files: mediaUrls.car || []
             };
+            let coords = document.getElementById('carLocationCoords').value;
+            if (coords) {
+                let [lat, lon] = coords.split(',').map(Number);
+                currentAdData.latitude = lat;
+                currentAdData.longitude = lon;
+            }
             goToPage('page4');
         }
-        
+
         function validateAndSaveProperty() {
             let type = document.getElementById('propType').value;
             let price = document.getElementById('propPrice').value.trim();
             let loc = document.getElementById('propLocation').value.trim();
             let tel = document.getElementById('propTel1').value.trim();
             let tgU = document.getElementById('propTg').value.trim();
-            
+
             if (!type) { tg.showAlert('Mulk turini tanlang'); return; }
             if (!price || price <= 0) { tg.showAlert('Narxni kiriting'); return; }
             if (!loc) { tg.showAlert('Manzilni kiriting'); return; }
-            if (!tel && !tgU) { tg.showAlert('Aloqa ma\'lumotini kiriting'); return; }
-            
+            if (!tel && !tgU) { tg.showAlert('Kamida 1 ta aloqa ma\'lumoti kerak'); return; }
+
             let transaction = document.querySelector('input[name="propTransaction"]:checked')?.value || 'sotiladi';
-            
+
             currentAdData = {
                 action: 'submit_ad',
                 category: 'property',
@@ -1062,14 +1205,21 @@
                 transaction: transaction,
                 location: loc,
                 area: document.getElementById('propArea').value || null,
+                yard_area: document.getElementById('propYardArea').value || null,
                 price: price,
                 tel1: tel || null,
                 telegram_username: tgU || null,
                 media_files: mediaUrls.property || []
             };
+            let coords = document.getElementById('propLocationCoords').value;
+            if (coords) {
+                let [lat, lon] = coords.split(',').map(Number);
+                currentAdData.latitude = lat;
+                currentAdData.longitude = lon;
+            }
             goToPage('page4');
         }
-        
+
         function validateAndSaveMixed() {
             let title = document.getElementById('mixedTitle').value.trim();
             let desc = document.getElementById('mixedDesc').value.trim();
@@ -1077,13 +1227,13 @@
             let loc = document.getElementById('mixedLocation').value.trim();
             let tel = document.getElementById('mixedContact').value.trim();
             let tgU = document.getElementById('mixedTg').value.trim();
-            
+
             if (!title) { tg.showAlert('Mahsulot nomini kiriting'); return; }
             if (!desc) { tg.showAlert('Tavsifni kiriting'); return; }
             if (!price || price <= 0) { tg.showAlert('Narxni kiriting'); return; }
             if (!loc) { tg.showAlert('Joylashuvni kiriting'); return; }
-            if (!tel && !tgU) { tg.showAlert('Aloqa ma\'lumotini kiriting'); return; }
-            
+            if (!tel && !tgU) { tg.showAlert('Kamida 1 ta aloqa ma\'lumoti kerak'); return; }
+
             currentAdData = {
                 action: 'submit_ad',
                 category: 'mixed',
@@ -1095,16 +1245,21 @@
                 telegram_username: tgU || null,
                 media_files: mediaUrls.mixed || []
             };
+            let coords = document.getElementById('mixedLocationCoords').value;
+            if (coords) {
+                let [lat, lon] = coords.split(',').map(Number);
+                currentAdData.latitude = lat;
+                currentAdData.longitude = lon;
+            }
             goToPage('page4');
         }
-        
-        // ==================== CHANNELS ====================
+
         async function loadChannels() {
             let container = document.getElementById('channelsList');
-            container.innerHTML = '<div class="loading-spinner"></div>';
+            container.innerHTML = '<div class="loading-spinner" style="margin:20px auto"></div>';
             try {
                 let data = await callAPI('/channels');
-                if (!data.success) throw new Error('Xatolik');
+                if (!data.success) throw new Error(data.error || 'Xatolik');
                 channels = data.channels || [];
                 if (channels.length === 0) {
                     container.innerHTML = '<div class="info-box">❌ Hech qanday kanal topilmadi</div>';
@@ -1131,6 +1286,7 @@
                             name: ch.channel_name,
                             price: price,
                             card_number: ch.card_number,
+                            card_holder: ch.card_holder,
                             admin_username: ch.admin_username
                         };
                         loadChannels();
@@ -1145,10 +1301,11 @@
                     container.appendChild(btn);
                 }
             } catch (error) {
-                container.innerHTML = '<div class="info-box">❌ Xatolik yuz berdi</div>';
+                console.error('Channels error:', error);
+                container.innerHTML = '<div class="info-box">❌ Kanallarni yuklashda xatolik</div>';
             }
         }
-        
+
         async function showPaymentInfo() {
             if (!selectedChannel) {
                 tg.showAlert('Kanal tanlang!');
@@ -1165,8 +1322,10 @@
                         <div class="card">
                             <h3>💳 To'lov ma'lumotlari</h3>
                             <p><strong>Karta:</strong> <code>${info.card_number || 'Kiritilmagan'}</code></p>
+                            <p><strong>Egasi:</strong> ${info.card_holder || 'Kiritilmagan'}</p>
                             <p><strong>Summa:</strong> <span class="price-display">${Number(selectedChannel.price).toLocaleString()} so'm</span></p>
                             <p><strong>Kanal:</strong> ${info.channel_name}</p>
+                            <p><strong>Admin:</strong> @${info.admin_username || 'admin'}</p>
                         </div>
                     `;
                 } else {
@@ -1180,10 +1339,10 @@
                 summaryHtml += `<p>💰 ${currentAdData.price} $</p><p>📍 ${currentAdData.location}</p></div>`;
                 document.getElementById('adSummary').innerHTML = summaryHtml;
             } catch (error) {
-                payDiv.innerHTML = '<div class="info-box">❌ Xatolik</div>';
+                payDiv.innerHTML = '<div class="info-box">❌ Xatolik yuz berdi</div>';
             }
         }
-        
+
         function submitAd() {
             if (!selectedChannel) return;
             currentAdData.selected_channel = {
@@ -1194,19 +1353,29 @@
             sendToTelegram(currentAdData);
             goToPage('page6');
         }
-        
+
         function sendToTelegram(data) {
             data.user_id = parseInt(userData.id);
             data.username = userData.username;
             data.first_name = userData.first_name;
+            data.timestamp = new Date().toISOString();
             tg.sendData(JSON.stringify(data));
         }
-        
-        // ==================== CHECK UPLOAD ====================
+
         function previewCheck(event) {
             let file = event.target.files[0];
             let btn = document.getElementById('uploadCheckBtn');
             if (!file) {
+                btn.disabled = true;
+                return;
+            }
+            if (file.size > 50 * 1024 * 1024) {
+                tg.showAlert('Rasm 50MB dan kichik bo\'lishi kerak!');
+                btn.disabled = true;
+                return;
+            }
+            if (!file.type.startsWith('image/')) {
+                tg.showAlert('Faqat rasm yuklash mumkin!');
                 btn.disabled = true;
                 return;
             }
@@ -1221,13 +1390,13 @@
             };
             reader.readAsDataURL(file);
         }
-        
+
         async function uploadCheck() {
             let file = document.getElementById('checkFile').files[0];
             if (!file) return;
             
             if (!currentAdId) {
-                tg.showAlert('E\'lon ID topilmadi');
+                tg.showAlert('E\'lon ID topilmadi!');
                 return;
             }
             
@@ -1244,6 +1413,8 @@
                 });
                 let json = await res.json();
                 if (json.success) {
+                    document.getElementById('checkId').innerText = '#' + currentAdId;
+                    document.getElementById('checkAdInfo').innerHTML = `<p>🆔 E'lon qabul qilindi, admin tekshiruvidan so'ng faollashtiriladi.</p>`;
                     goToPage('page7');
                 } else {
                     throw new Error('Upload failed');
@@ -1253,8 +1424,7 @@
             }
             hideLoading();
         }
-        
-        // ==================== MY ADS ====================
+
         async function loadMyAds(page = 1) {
             let container = document.getElementById('myAdsList');
             container.innerHTML = '<div class="loading-spinner"></div>';
@@ -1266,10 +1436,10 @@
                         let div = document.createElement('div');
                         div.className = 'card';
                         div.innerHTML = `
-                            <h3>${ad.category_emoji || '📦'} ${ad.display_title || 'E\'lon'}</h3>
+                            <h3>${ad.category_emoji || '📦'} ${ad.display_title || ad.title || 'E\'lon'}</h3>
                             <p>💰 ${ad.price} $ • 📅 ${ad.created_date || ''}</p>
                             <p>📢 ${ad.channel_name || 'Kanal nomi yo\'q'}</p>
-                            <span class="status-badge ${ad.status_class || 'status-pending'}">${ad.status_text || 'Kutilmoqda'}</span>
+                            <span class="status-badge status-pending">${ad.status_text}</span>
                             <div style="margin-top: 12px; display: flex; gap: 8px;">
                                 <button class="btn btn-secondary" style="flex:1" onclick="viewAd(${ad.id})">👁 Ko\'rish</button>
                                 <button class="btn btn-danger" style="flex:1" onclick="deleteAdPrompt(${ad.id})">🗑 O\'chirish</button>
@@ -1290,17 +1460,18 @@
                     }
                 } else {
                     container.innerHTML = '<div class="info-box">📭 Sizda hali e\'lonlar mavjud emas</div>';
+                    document.getElementById('myAdsPagination').innerHTML = '';
                 }
             } catch (error) {
-                container.innerHTML = '<div class="info-box">❌ Xatolik</div>';
+                console.error('Load my ads error:', error);
+                container.innerHTML = '<div class="info-box">❌ E\'lonlarni yuklashda xatolik</div>';
             }
         }
-        
-        // ==================== SEARCH ====================
+
         async function searchAds(page = 1) {
             let query = document.getElementById('searchQuery').value.trim();
             if (!query) {
-                tg.showAlert('Qidirish so\'zini kiriting');
+                tg.showAlert('Qidirish so\'zini kiriting!');
                 return;
             }
             
@@ -1317,6 +1488,7 @@
                         div.innerHTML = `
                             <h3>📦 ${ad.title || 'E\'lon'}</h3>
                             <p>💰 ${ad.price} $ • 📍 ${ad.location || 'Noma\'lum'}</p>
+                            <p>📅 ${ad.created_at ? ad.created_at.split('T')[0] : 'Noma\'lum'}</p>
                             <button class="btn btn-secondary" onclick="viewAd(${ad.id})">👁 Ko\'rish</button>
                         `;
                         container.appendChild(div);
@@ -1334,12 +1506,14 @@
                     }
                 } else {
                     container.innerHTML = '<div class="info-box">🔍 Hech qanday e\'lon topilmadi</div>';
+                    document.getElementById('searchPagination').innerHTML = '';
                 }
             } catch (error) {
+                console.error('Search error:', error);
                 container.innerHTML = '<div class="info-box">❌ Qidirishda xatolik</div>';
             }
         }
-        
+
         async function viewAd(id) {
             showLoading();
             try {
@@ -1353,7 +1527,8 @@
                         <p><strong>💰 Narx:</strong> ${ad.price} $</p>
                         <p><strong>📍 Joylashuv:</strong> ${ad.location || 'Ko\'rsatilmagan'}</p>
                         <p><strong>📞 Aloqa:</strong> ${ad.tel1 || ad.telegram_username || 'Yo\'q'}</p>
-                        <p><strong>📊 Holat:</strong> <span class="status-badge ${ad.status_class}">${ad.status_text}</span></p>
+                        <p><strong>📊 Holat:</strong> <span class="status-badge status-pending">${ad.status_text}</span></p>
+                        <p><strong>📅 Sana:</strong> ${ad.created_date || ad.created_at}</p>
                     `;
                     goToPage('page9');
                 } else {
@@ -1364,25 +1539,25 @@
             }
             hideLoading();
         }
-        
+
         function deleteAdPrompt(id) {
             currentAdId = id;
             document.getElementById('deleteAdInfo').innerHTML = `<p>E\'lon ID: #${id}</p><p>⚠️ O\'chirilgandan keyin qayta tiklanmaydi!</p>`;
             goToPage('page10');
         }
-        
+
         function confirmDelete() {
             sendToTelegram({ action: 'delete_ad', ad_id: currentAdId, confirm: true });
             tg.showAlert('✅ E\'lon o\'chirildi');
             goToPage('page8');
         }
-        
-        // ==================== HELPERS ====================
+
         function showLoading(msg = 'Yuklanmoqda...') {
+            let loading = document.getElementById('loading');
             document.getElementById('loadingText').innerText = msg;
-            document.getElementById('loading').classList.remove('hidden');
+            loading.classList.remove('hidden');
         }
-        
+
         function hideLoading() {
             document.getElementById('loading').classList.add('hidden');
         }
