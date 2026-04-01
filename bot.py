@@ -110,7 +110,6 @@ if not API_KEY:
 print("\n📝 Logging sozlanmoqda...")
 
 try:
-    # Log papkasini yaratish
     os.makedirs("logs", exist_ok=True)
     
     logging.basicConfig(
@@ -184,37 +183,46 @@ async def api_call(endpoint: str, method: str = 'GET', data: Dict = None, files:
                         form_data.add_field(key, str(value))
                 
                 async with session.post(url, data=form_data, headers=headers) as resp:
-                    content_type = resp.headers.get('Content-Type', '')
-                    if 'text/html' in content_type:
-                        print_step(f"API HTML qaytardi! URL: {url}", "error")
-                        return {'success': False, 'error': 'API server not responding correctly'}
-                    return await resp.json()
+                    if resp.status == 200:
+                        try:
+                            return await resp.json()
+                        except:
+                            text = await resp.text()
+                            return {'success': False, 'error': f'Invalid JSON response: {text[:200]}'}
+                    return {'success': False, 'error': f'HTTP {resp.status}'}
                     
             elif method == 'GET':
                 params = data or {}
                 if admin_id and 'admin_id' not in params:
                     params['admin_id'] = admin_id
                 async with session.get(url, headers=headers, params=params) as resp:
-                    content_type = resp.headers.get('Content-Type', '')
-                    if 'text/html' in content_type:
-                        print_step(f"API HTML qaytardi! URL: {url}", "error")
-                        return {'success': False, 'error': 'API server not responding correctly'}
-                    return await resp.json()
+                    if resp.status == 200:
+                        try:
+                            return await resp.json()
+                        except:
+                            text = await resp.text()
+                            return {'success': False, 'error': f'Invalid JSON response: {text[:200]}'}
+                    return {'success': False, 'error': f'HTTP {resp.status}'}
                     
             elif method == 'POST':
                 async with session.post(url, json=data, headers=headers) as resp:
-                    content_type = resp.headers.get('Content-Type', '')
-                    if 'text/html' in content_type:
-                        print_step(f"API HTML qaytardi! URL: {url}", "error")
-                        return {'success': False, 'error': 'API server not responding correctly'}
-                    return await resp.json()
+                    if resp.status == 200:
+                        try:
+                            return await resp.json()
+                        except:
+                            text = await resp.text()
+                            return {'success': False, 'error': f'Invalid JSON response: {text[:200]}'}
+                    return {'success': False, 'error': f'HTTP {resp.status}'}
                     
             elif method == 'PUT':
                 async with session.put(url, json=data, headers=headers) as resp:
-                    content_type = resp.headers.get('Content-Type', '')
-                    if 'text/html' in content_type:
-                        return {'success': False, 'error': 'API server not responding correctly'}
-                    return await resp.json()
+                    if resp.status == 200:
+                        try:
+                            return await resp.json()
+                        except:
+                            text = await resp.text()
+                            return {'success': False, 'error': f'Invalid JSON response: {text[:200]}'}
+                    return {'success': False, 'error': f'HTTP {resp.status}'}
                     
             else:
                 return {'success': False, 'error': 'Invalid method'}
@@ -326,16 +334,6 @@ async def publish_ad_to_channel(ad_id: int, admin_telegram_id: int) -> bool:
         
         ad = ad_result.get('ad')
         
-        # E'lonni tasdiqlash
-        approve_result = await api_call(f'/admin/approve/{ad_id}', 'POST', {
-            'admin_telegram_id': admin_telegram_id
-        })
-        
-        if not approve_result.get('success'):
-            print_step(f"Failed to approve ad {ad_id}: {approve_result.get('error')}", "error")
-            return False
-        
-        # Kanallar ro'yxatini olish
         channels_result = await api_call('/channels', 'GET')
         channels = channels_result.get('channels', [])
         
@@ -355,18 +353,15 @@ async def publish_ad_to_channel(ad_id: int, admin_telegram_id: int) -> bool:
         media_files = ad.get('media_files', [])
         message_id = None
         
-        if media_files:
+        if media_files and len(media_files) > 0:
             media_group = []
             for i, media in enumerate(media_files[:10]):
-                if isinstance(media, str):
-                    url = media
-                else:
-                    url = media.get('url', '')
-                
+                url = media if isinstance(media, str) else media.get('url', '')
                 if url:
                     try:
+                        full_url = f"{API_URL}{url}" if url.startswith('/') else url
                         async with aiohttp.ClientSession() as session:
-                            async with session.get(url) as resp:
+                            async with session.get(full_url) as resp:
                                 if resp.status == 200:
                                     img_data = await resp.read()
                                     media_group.append(
@@ -388,7 +383,6 @@ async def publish_ad_to_channel(ad_id: int, admin_telegram_id: int) -> bool:
                     if messages:
                         message_id = messages[0].message_id
                     
-                    # Tugmalarni alohida yuborish
                     await bot.send_message(
                         chat_id=channel_tg_id,
                         text="📌 <b>E'lon ma'lumotlari:</b>",
@@ -421,17 +415,15 @@ async def publish_ad_to_channel(ad_id: int, admin_telegram_id: int) -> bool:
             )
             message_id = msg.message_id
         
-        # Xabar ID sini saqlash
-        await api_call(f'/ad/{ad_id}', 'PUT', {
-            'published_message_id': message_id
-        })
+        if message_id:
+            await api_call(f'/ad/{ad_id}', 'PUT', {
+                'published_message_id': message_id
+            })
         
-        # Nashr qilishni tasdiqlash
         await api_call(f'/publish-ad/{ad_id}', 'POST', {
             'admin_telegram_id': admin_telegram_id
         })
         
-        # Foydalanuvchiga xabar yuborish
         user_id = ad.get('user_id')
         if user_id:
             try:
@@ -463,7 +455,6 @@ async def start_command(message: Message):
     
     print_step(f"START komandasi: user_id={user_id}, username={username}", "info")
     
-    # API orqali foydalanuvchini yaratish
     result = await api_call('/create-user', 'POST', {
         'telegram_id': user_id,
         'username': username,
@@ -476,17 +467,14 @@ async def start_command(message: Message):
     else:
         print_step(f"   Foydalanuvchi xatosi: {result.get('error')}", "error")
     
-    # WebApp URL
     webapp_url = f"{WEBAPP_URL}?user_id={user_id}&api_url={API_URL}"
     
-    # Tugmalar
     kb = []
     
     if user_id in ADMIN_IDS:
         kb.append([InlineKeyboardButton(text="👑 Katta Admin Panel", callback_data="superadmin_panel")])
         print_step("   Admin panel tugmasi qo'shildi", "debug")
     
-    # Kanal adminligini tekshirish
     admin_result = await api_call('/admin/me', 'GET', {'telegram_id': user_id})
     
     if admin_result.get('success') and admin_result.get('admin'):
@@ -501,14 +489,12 @@ async def start_command(message: Message):
         [InlineKeyboardButton(text="🤝 Biz bilan hamkorlik", callback_data="cooperation")]
     ])
     
-    # Kanallarni yuklash
     channels_result = await api_call('/channels', 'GET')
     channels = channels_result.get('channels', []) if channels_result.get('success') else []
     print_step(f"   {len(channels)} ta kanal yuklandi", "success")
     
-    # Xabarlarni tekshirish
     notifications_result = await api_call(f'/notifications/{user_id}', 'GET')
-    unread_count = len([n for n in notifications_result.get('notifications', []) if n.get('is_sent') == 0])
+    unread_count = len(notifications_result.get('notifications', []))
     
     welcome_text = (
         f"👋 Assalomu alaykum, {first_name}!\n\n"
@@ -533,7 +519,6 @@ async def start_command(message: Message):
     )
     print_step("   Xabar yuborildi", "success")
 
-# ==================== HELP KOMANDASI ====================
 @dp.message(Command("help"))
 async def help_command(message: Message):
     await message.answer(
@@ -547,18 +532,15 @@ async def help_command(message: Message):
         "📞 <b>Muammo bo'lsa:</b> @admin_username ga murojaat qiling"
     )
 
-# ==================== SEARCH KOMANDASI ====================
 @dp.message(Command("search"))
 async def search_command(message: Message):
-    """E'lonlarni qidirish"""
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         await message.answer(
             "🔍 <b>Qidiruv komandasi</b>\n\n"
             "Format: /search <so'z>\n\n"
             "Misol: /search iPhone\n"
-            "Misol: /search Toshkent\n"
-            "Misol: /search -category phone -min 100 -max 500\n\n"
+            "Misol: /search Toshkent\n\n"
             "🔹 Qidiruv natijalari avtomatik ravishda ko'rsatiladi.",
             parse_mode="HTML"
         )
@@ -594,10 +576,8 @@ async def search_command(message: Message):
     else:
         await message.answer(f"🔍 \"{query}\" bo'yicha hech qanday e'lon topilmadi.")
 
-# ==================== NOTIFICATIONS KOMANDASI ====================
 @dp.message(Command("notifications"))
 async def notifications_command(message: Message):
-    """Xabarlarni ko'rish"""
     telegram_id = message.from_user.id
     
     result = await api_call(f'/notifications/{telegram_id}', 'GET')
@@ -616,24 +596,18 @@ async def notifications_command(message: Message):
             text += f"📅 {n.get('created_at', '')[:10] if n.get('created_at') else 'Nomalum'}\n"
             text += f"━━━━━━━━━━━━━━━\n"
             
-            # Xabarni o'qilgan deb belgilash
             await api_call(f'/notifications/mark-read/{n.get("id")}', 'POST')
         
         await message.answer(text, parse_mode="HTML")
     else:
         await message.answer("📬 Sizda yangi xabarlar yo'q.")
 
-# ==================== MY ADS ====================
 @dp.message(Command("my_ads"))
 async def my_ads_command(message: Message):
-    await my_ads_callback(message)
-
-@dp.callback_query(F.data == "my_ads")
-async def my_ads_callback(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    page = int(callback.data.split(":")[1]) if ":" in callback.data else 1
+    user_id = message.from_user.id
+    page = 1
     
-    await callback.answer("⏳ E'lonlar yuklanmoqda...")
+    await message.answer("⏳ E'lonlar yuklanmoqda...")
     
     result = await api_call('/user/ads', 'GET', {'telegram_id': user_id, 'page': page, 'per_page': 10})
     
@@ -648,7 +622,6 @@ async def my_ads_callback(callback: types.CallbackQuery):
             text += f"📊 {ad.get('status_text', 'Nomalum')}\n"
             text += f"🆔 #{ad.get('id')}\n━━━━━━━━━━━━━━━\n"
         
-        # Pagination tugmalari
         kb = []
         for ad in ads[:5]:
             kb.append([InlineKeyboardButton(
@@ -656,14 +629,58 @@ async def my_ads_callback(callback: types.CallbackQuery):
                 callback_data=f"view_ad:{ad.get('id')}"
             )])
         
-        nav_buttons = []
-        if page > 1:
-            nav_buttons.append(InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"my_ads:{page-1}"))
-        if page < total_pages:
-            nav_buttons.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"my_ads:{page+1}"))
-        if nav_buttons:
-            kb.append(nav_buttons)
+        if total_pages > 1:
+            nav_buttons = []
+            if page > 1:
+                nav_buttons.append(InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"my_ads:{page-1}"))
+            if page < total_pages:
+                nav_buttons.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"my_ads:{page+1}"))
+            if nav_buttons:
+                kb.append(nav_buttons)
         
+        kb.append([InlineKeyboardButton(text="📝 Yangi e'lon", web_app=WebAppInfo(url=f"{WEBAPP_URL}?user_id={user_id}&api_url={API_URL}"))])
+        kb.append([InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")])
+        
+        await message.answer(
+            text,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(
+            "📭 <b>Sizda hali e'lonlar mavjud emas.</b>\n\n"
+            "Yangi e'lon joylash uchun quyidagi tugmani bosing:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📝 Yangi e'lon", web_app=WebAppInfo(url=f"{WEBAPP_URL}?user_id={user_id}&api_url={API_URL}"))],
+                [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")]
+            ]),
+            parse_mode="HTML"
+        )
+
+@dp.callback_query(F.data == "my_ads")
+async def my_ads_callback(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    
+    await callback.answer("⏳ E'lonlar yuklanmoqda...")
+    
+    result = await api_call('/user/ads', 'GET', {'telegram_id': user_id, 'page': 1, 'per_page': 10})
+    
+    if result.get('success') and result.get('ads'):
+        ads = result.get('ads')
+        
+        text = "📋 <b>MENING E'LONLARIM</b>\n\n"
+        for ad in ads:
+            text += f"{ad.get('category_emoji', '📦')} <b>{ad.get('display_title', 'Elon')}</b>\n"
+            text += f"💰 {ad.get('price', 0)} $ • 📅 {ad.get('created_date', 'Nomalum')}\n"
+            text += f"📊 {ad.get('status_text', 'Nomalum')}\n"
+            text += f"🆔 #{ad.get('id')}\n━━━━━━━━━━━━━━━\n"
+        
+        kb = []
+        for ad in ads[:5]:
+            kb.append([InlineKeyboardButton(
+                text=f"👁 #{ad.get('id')} - {ad.get('display_title', 'Elon')[:30]}",
+                callback_data=f"view_ad:{ad.get('id')}"
+            )])
         kb.append([InlineKeyboardButton(text="📝 Yangi e'lon", web_app=WebAppInfo(url=f"{WEBAPP_URL}?user_id={user_id}&api_url={API_URL}"))])
         kb.append([InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")])
         
@@ -673,12 +690,11 @@ async def my_ads_callback(callback: types.CallbackQuery):
             parse_mode="HTML"
         )
     else:
-        webapp_url = f"{WEBAPP_URL}?user_id={user_id}&api_url={API_URL}"
         await callback.message.edit_text(
             "📭 <b>Sizda hali e'lonlar mavjud emas.</b>\n\n"
             "Yangi e'lon joylash uchun quyidagi tugmani bosing:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📝 Yangi e'lon", web_app=WebAppInfo(url=webapp_url))],
+                [InlineKeyboardButton(text="📝 Yangi e'lon", web_app=WebAppInfo(url=f"{WEBAPP_URL}?user_id={user_id}&api_url={API_URL}"))],
                 [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")]
             ]),
             parse_mode="HTML"
@@ -686,11 +702,9 @@ async def my_ads_callback(callback: types.CallbackQuery):
     
     await callback.answer()
 
-# ==================== VIEW AD ====================
 @dp.callback_query(F.data.startswith("view_ad:"))
 async def view_ad_callback(callback: types.CallbackQuery):
     ad_id = int(callback.data.split(":")[1])
-    user_id = callback.from_user.id
     
     await callback.answer("⏳ Ma'lumot yuklanmoqda...")
     
@@ -701,7 +715,6 @@ async def view_ad_callback(callback: types.CallbackQuery):
         
         text = f"<b>📌 E'LON #{ad.get('id')}</b>\n\n"
         text += f"📂 <b>Kategoriya:</b> {ad.get('category_name', ad.get('category'))}\n"
-        text += f"📝 <b>Sarlavha:</b> {ad.get('display_title', ad.get('title', 'Elon'))}\n"
         text += f"💰 <b>Narx:</b> {ad.get('price')} $\n"
         text += f"📍 <b>Joylashuv:</b> {ad.get('location', 'Korsatilmagan')}\n"
         text += f"📞 <b>Aloqa:</b> {ad.get('tel1', ad.get('telegram_username', 'Yoq'))}\n"
@@ -730,7 +743,6 @@ async def view_ad_callback(callback: types.CallbackQuery):
     
     await callback.answer()
 
-# ==================== DELETE AD ====================
 @dp.callback_query(F.data.startswith("delete_ad:"))
 async def delete_ad_callback(callback: types.CallbackQuery):
     ad_id = int(callback.data.split(":")[1])
@@ -747,7 +759,6 @@ async def delete_ad_callback(callback: types.CallbackQuery):
     
     await callback.answer()
 
-# ==================== SEARCH MENU ====================
 @dp.callback_query(F.data == "search_menu")
 async def search_menu_callback(callback: types.CallbackQuery):
     await callback.message.edit_text(
@@ -757,13 +768,6 @@ async def search_menu_callback(callback: types.CallbackQuery):
         "<code>/search iPhone</code>\n\n"
         "2️⃣ <b>Joylashuv bo'yicha:</b>\n"
         "<code>/search Toshkent</code>\n\n"
-        "3️⃣ <b>Kategoriya va narx bo'yicha:</b>\n"
-        "<code>/search -category phone -min 100 -max 500</code>\n\n"
-        "📌 <b>Mavjud kategoriyalar:</b>\n"
-        "• phone - Telefon\n"
-        "• car - Avtomobil\n"
-        "• property - Ko'chmas mulk\n"
-        "• mixed - Aralash\n\n"
         "💡 <b>Maslahat:</b> Qidiruv natijalarini yaxshilash uchun aniq so'zlardan foydalaning.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔍 Qidirish", switch_inline_query_current_chat="")],
@@ -773,13 +777,11 @@ async def search_menu_callback(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# ==================== NOTIFICATIONS MENU ====================
 @dp.callback_query(F.data == "notifications_menu")
 async def notifications_menu_callback(callback: types.CallbackQuery):
     await notifications_command(callback.message)
     await callback.answer()
 
-# ==================== COOPERATION ====================
 @dp.callback_query(F.data == "cooperation")
 async def cooperation_callback(callback: types.CallbackQuery):
     await callback.message.edit_text(
@@ -791,16 +793,13 @@ async def cooperation_callback(callback: types.CallbackQuery):
         "💼 <b>Hamkorlik turlari:</b>\n"
         "• Kanal reklamasi - kunlik 50,000+ ko'rish\n"
         "• Bot integratsiyasi - 24/7 avtomatik\n"
-        "• Maxsus yechimlar - sizning talablaringiz bo'yicha\n"
-        "• Ommaviy e'lonlar - bir vaqtning o'zida barcha kanallarda\n\n"
+        "• Maxsus yechimlar - sizning talablaringiz bo'yicha\n\n"
         "💰 <b>Narxlar:</b>\n"
         "• Kanal reklamasi: 100,000 so'm/kun\n"
-        "• Bot reklamasi: 200,000 so'm/hafta\n"
-        "• Maxsus paket: kelishilgan holda\n\n"
+        "• Bot reklamasi: 200,000 so'm/hafta\n\n"
         "📞 <b>Bog'lanish:</b>\n"
         "Telegram: @admin_username\n"
-        "Telefon: +998901234567\n"
-        "Email: admin@elonbot.uz",
+        "Telefon: +998901234567",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📞 Admin bilan bog'lanish", url="https://t.me/admin_username")],
             [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")]
@@ -809,13 +808,11 @@ async def cooperation_callback(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# ==================== BACK TO MAIN ====================
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_callback(callback: types.CallbackQuery):
     await start_command(callback.message)
     await callback.answer()
 
-# ==================== WEBAPP DATA HANDLER ====================
 @dp.message(F.web_app_data)
 async def handle_web_app_data(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -870,8 +867,9 @@ async def handle_web_app_data(message: Message, state: FSMContext):
             
         elif action == "upload_check":
             ad_id = data.get('ad_id')
+            channel_id = data.get('channel_id')
             print_step(f"   Chek yuklash: ad_id={ad_id}", "info")
-            await state.update_data(ad_id=ad_id, channel_id=data.get('channel_id'))
+            await state.update_data(ad_id=ad_id, channel_id=channel_id)
             await message.answer(
                 "📸 To'lov chekini rasm sifatida yuboring (jpg/png, 5MB gacha):\n\n"
                 "Chekda quyidagilar ko'rinishi kerak:\n"
@@ -907,7 +905,6 @@ async def handle_web_app_data(message: Message, state: FSMContext):
         print_step(traceback.format_exc(), "debug")
         await message.answer("❌ Ma'lumotni qayta ishlashda xatolik!")
 
-# ==================== KANAL TANLASH ====================
 @dp.callback_query(F.data.startswith("select_channel:"), StateFilter(AdStates.waiting_for_check))
 async def handle_channel_selection(callback: types.CallbackQuery, state: FSMContext):
     try:
@@ -934,11 +931,6 @@ async def handle_channel_selection(callback: types.CallbackQuery, state: FSMCont
         }
         
         payment_info = await api_call(f'/payment-info/{channel_id}', 'GET')
-        
-        if not payment_info.get('success'):
-            print_step(f"   To'lov ma'lumotlari topilmadi", "warning")
-            await callback.answer("❌ Kanal ma'lumotlari topilmadi!", show_alert=True)
-            return
         
         result = await api_call('/create-ad', 'POST', {
             'user_id': user_id,
@@ -992,7 +984,6 @@ async def handle_channel_selection(callback: types.CallbackQuery, state: FSMCont
         print_step(traceback.format_exc(), "debug")
         await callback.answer("❌ Xatolik yuz berdi!", show_alert=True)
 
-# ==================== TO'LOV TASDIQLASH ====================
 @dp.callback_query(F.data.startswith("payment_done:"))
 async def handle_payment_confirmation(callback: types.CallbackQuery, state: FSMContext):
     try:
@@ -1029,7 +1020,6 @@ async def handle_payment_confirmation(callback: types.CallbackQuery, state: FSMC
         print_step(traceback.format_exc(), "debug")
         await callback.answer("❌ Xatolik yuz berdi!", show_alert=True)
 
-# ==================== CHEK YUKLASH ====================
 @dp.message(AdStates.waiting_for_check, F.photo)
 async def handle_check_photo(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -1084,7 +1074,6 @@ async def handle_check_photo(message: Message, state: FSMContext):
         await message.answer("❌ Chek yuklashda xatolik yuz berdi!")
         await state.clear()
 
-# ==================== BEKOR QILISHLAR ====================
 @dp.callback_query(F.data == "cancel_check", StateFilter(AdStates.waiting_for_check))
 async def cancel_check_callback(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
@@ -1118,7 +1107,6 @@ async def cancel_payment_callback(callback: types.CallbackQuery, state: FSMConte
     )
     await callback.answer()
 
-# ==================== KANAL ADMIN PANEL (QISQARTIRILGAN) ====================
 @dp.callback_query(F.data == "channel_manage")
 async def channel_manage_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -1201,7 +1189,7 @@ async def admin_pending_callback(callback: types.CallbackQuery):
             f"{category_emoji} <b>{title}</b>\n"
             f"💰 {int(payment_amount):,} so'm\n"
             f"👤 @{username}\n"
-            f"📅 {created_at.split()[0] if created_at else 'Nomalum'}\n"
+            f"📅 {created_at.split('T')[0] if created_at else 'Nomalum'}\n"
             f"🆔 #{ad_id}\n"
             f"━━━━━━━━━━━━━━━\n\n"
         )
@@ -1225,7 +1213,6 @@ async def admin_pending_callback(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# ==================== PUBLISH AD CALLBACK ====================
 @dp.callback_query(F.data.startswith("publish_ad:"))
 async def publish_ad_callback(callback: types.CallbackQuery):
     ad_id = int(callback.data.split(":")[1])
@@ -1248,7 +1235,6 @@ async def publish_ad_callback(callback: types.CallbackQuery):
             parse_mode="HTML"
         )
 
-# ==================== APPROVE AD ====================
 @dp.callback_query(F.data.startswith("approve_ad:"))
 async def approve_ad_callback(callback: types.CallbackQuery):
     ad_id = int(callback.data.split(":")[1])
@@ -1264,11 +1250,9 @@ async def approve_ad_callback(callback: types.CallbackQuery):
     else:
         await callback.answer("❌ E'lonni tasdiqlashda xatolik!", show_alert=True)
 
-# ==================== REJECT AD ====================
 @dp.callback_query(F.data.startswith("reject_ad:"))
 async def reject_ad_callback(callback: types.CallbackQuery, state: FSMContext):
     ad_id = int(callback.data.split(":")[1])
-    user_id = callback.from_user.id
     
     await state.update_data(reject_ad_id=ad_id)
     await callback.message.answer(
@@ -1304,7 +1288,6 @@ async def process_reject_reason(message: Message, state: FSMContext):
     await state.clear()
     await admin_pending_callback(message)
 
-# ==================== ADMIN CARD ====================
 @dp.callback_query(F.data == "admin_card")
 async def admin_card_callback(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -1372,7 +1355,6 @@ async def process_card_info(message: Message, state: FSMContext):
     else:
         await message.answer("❌ Karta ma'lumotlarini saqlashda xatolik!")
 
-# ==================== ADMIN PRICES ====================
 @dp.callback_query(F.data == "admin_prices")
 async def admin_prices_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -1408,7 +1390,6 @@ async def admin_prices_callback(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("price_"))
 async def select_price_type(callback: types.CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
     price_type = callback.data.split("_")[1]
     
     await state.update_data(price_type=price_type)
@@ -1461,7 +1442,6 @@ async def process_new_price(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Faqat raqam kiriting!")
 
-# ==================== ADMIN STATS ====================
 @dp.callback_query(F.data == "admin_stats")
 async def admin_stats_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -1499,7 +1479,6 @@ async def admin_stats_callback(callback: types.CallbackQuery):
     
     await callback.answer()
 
-# ==================== ADMIN SETTINGS ====================
 @dp.callback_query(F.data == "admin_settings")
 async def admin_settings_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -1589,7 +1568,7 @@ async def admin_profile_callback(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# ==================== SUPER ADMIN PANEL (QISQARTIRILGAN) ====================
+# ==================== SUPER ADMIN PANEL ====================
 @dp.callback_query(F.data == "superadmin_panel")
 async def superadmin_panel_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -1648,10 +1627,8 @@ async def super_stats_callback(callback: types.CallbackQuery):
             f"📊 <b>UMUMIY STATISTIKA</b>\n\n"
             f"👥 <b>Foydalanuvchilar:</b> {stats.get('total_users', 0)} ta\n\n"
             f"📢 <b>Kanallar:</b>\n"
-            f"• Aktiv: {stats.get('active_channels', 0)} ta\n"
             f"• Jami: {stats.get('total_channels', 0)} ta\n\n"
             f"👤 <b>Adminlar:</b>\n"
-            f"• Aktiv: {stats.get('active_admins', 0)} ta\n"
             f"• Jami: {stats.get('total_admins', 0)} ta\n\n"
             f"📝 <b>E'lonlar:</b>\n"
             f"• Jami: {stats.get('total_ads', 0)} ta\n"
@@ -1808,7 +1785,6 @@ async def super_income_callback(callback: types.CallbackQuery):
     
     await callback.answer()
 
-# ==================== SUPER ADD CHANNEL ====================
 @dp.callback_query(F.data == "super_add_channel")
 async def super_add_channel_callback(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -2065,7 +2041,6 @@ async def select_channel_for_admin_callback(callback: types.CallbackQuery, state
     await state.set_state(SuperAdminStates.waiting_for_admin_telegram_id)
     await callback.answer()
 
-# ==================== UNHANDLED ====================
 @dp.message()
 async def unhandled_messages(message: Message):
     await message.answer(
@@ -2135,1057 +2110,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-"""
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║                         E'LON BOT - TELEGRAM BOT v2.0                         ║
-╚═══════════════════════════════════════════════════════════════════════════════╝
-"""
-
-import os
-import sys
-import json
-import logging
-import asyncio
-import aiohttp
-import traceback
-from datetime import datetime, timedelta
-from typing import Dict, Any
-from io import BytesIO
-
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, StateFilter
-from aiogram.types import (
-    WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, KeyboardButton, CallbackQuery, Message,
-    BotCommand, BotCommandScopeDefault, InputMediaPhoto
-)
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# ==================== KONSOLE UCHUN RANGLAR ====================
-class Colors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-
-def print_step(msg: str, status: str = "info"):
-    if status == "info":
-        print(f"   {Colors.CYAN}ℹ️{Colors.ENDC} {msg}")
-    elif status == "success":
-        print(f"   {Colors.GREEN}✅{Colors.ENDC} {msg}")
-    elif status == "error":
-        print(f"   {Colors.FAIL}❌{Colors.ENDC} {msg}")
-
-# ==================== ENVIRONMENT ====================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBAPP_URL = os.getenv("WEBAPP_URL")
-API_URL = os.getenv("API_URL")
-API_KEY = os.getenv("API_KEY")
-ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
-
-ADMIN_IDS = []
-if ADMIN_IDS_STR:
-    try:
-        ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip().isdigit()]
-    except ValueError:
-        pass
-
-if not BOT_TOKEN:
-    print_step("BOT_TOKEN mavjud emas!", "error")
-    sys.exit(1)
-if not API_URL:
-    print_step("API_URL mavjud emas!", "error")
-    sys.exit(1)
-
-# ==================== LOGGING ====================
-os.makedirs("logs", exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/bot.log', encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# ==================== BOT ====================
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
-
-# ==================== FSM HOLATLARI ====================
-class AdStates(StatesGroup):
-    waiting_for_check = State()
-
-class ChannelAdminStates(StatesGroup):
-    waiting_for_card_info = State()
-    waiting_for_price_update = State()
-    waiting_for_reject_reason = State()
-
-class SuperAdminStates(StatesGroup):
-    waiting_for_channel_id = State()
-    waiting_for_channel_name = State()
-    waiting_for_admin_telegram_id = State()
-    waiting_for_admin_percent = State()
-
-# ==================== API CALL ====================
-async def api_call(endpoint: str, method: str = 'GET', data: Dict = None, files: Dict = None) -> Dict:
-    url = f"{API_URL}{endpoint}"
-    headers = {
-        'X-API-Key': API_KEY,
-        'Content-Type': 'application/json'
-    }
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            if method == 'GET':
-                async with session.get(url, headers=headers, params=data) as resp:
-                    return await resp.json()
-            elif method == 'POST':
-                async with session.post(url, json=data, headers=headers) as resp:
-                    return await resp.json()
-            elif method == 'PUT':
-                async with session.put(url, json=data, headers=headers) as resp:
-                    return await resp.json()
-            else:
-                return {'success': False, 'error': 'Invalid method'}
-    except Exception as e:
-        logger.error(f"API call error: {e}")
-        return {'success': False, 'error': str(e)}
-
-# ==================== BOT KOMANDALARI ====================
-async def set_bot_commands():
-    commands = [
-        BotCommand(command="start", description="🚀 Botni ishga tushirish"),
-        BotCommand(command="help", description="❓ Yordam"),
-        BotCommand(command="my_ads", description="📋 Mening e'lonlarim"),
-        BotCommand(command="search", description="🔍 E'lonlarni qidirish"),
-        BotCommand(command="notifications", description="📬 Xabarlar"),
-    ]
-    await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
-    print_step("Bot komandalari o'rnatildi", "success")
-
-# ==================== FORMATLASH ====================
-def format_ad_message(ad: Dict[str, Any]) -> tuple:
-    category_emoji = {'phone': '📱', 'car': '🚗', 'property': '🏠', 'mixed': '📦'}.get(ad.get('category'), '📦')
-    
-    if ad.get('category') == 'phone':
-        title = ad.get('phone_model', 'Telefon')
-    elif ad.get('category') == 'car':
-        title = ad.get('car_model', 'Avtomobil')
-    elif ad.get('category') == 'property':
-        title = ad.get('property_type', "Ko'chmas mulk")
-    else:
-        title = ad.get('title', 'E\'lon')
-    
-    text = f"{category_emoji} <b>{title}</b>\n\n"
-    text += f"💰 <b>Narx:</b> {ad.get('price', 0)} $\n"
-    if ad.get('location'):
-        text += f"📍 <b>Joylashuv:</b> {ad.get('location')}\n"
-    if ad.get('description'):
-        text += f"\n📄 <b>Tavsif:</b>\n{ad.get('description')[:300]}\n"
-    
-    text += f"\n━━━━━━━━━━━━━━━\n"
-    text += f"<b>📞 Aloqa:</b>\n"
-    if ad.get('tel1'):
-        text += f"📱 Telefon: <code>{ad.get('tel1')}</code>\n"
-    if ad.get('telegram_username'):
-        text += f"💬 Telegram: @{ad.get('telegram_username')}\n"
-    
-    text += f"\n🆔 <b>E'lon ID:</b> #{ad.get('id')}\n"
-    
-    inline_kb = [
-        [InlineKeyboardButton(text="📞 Aloqa", callback_data=f"contact_ad:{ad.get('id')}")],
-        [InlineKeyboardButton(text="👁 Ko'rish", callback_data=f"view_ad:{ad.get('id')}")]
-    ]
-    
-    if ad.get('tel1'):
-        inline_kb[0].insert(0, InlineKeyboardButton(text="📞 Qo'ng'iroq", url=f"tel:{ad.get('tel1')}"))
-    
-    return text, InlineKeyboardMarkup(inline_keyboard=inline_kb)
-
-# ==================== START ====================
-@dp.message(Command("start"))
-async def start_command(message: Message):
-    user_id = message.from_user.id
-    username = message.from_user.username
-    first_name = message.from_user.first_name
-    last_name = message.from_user.last_name
-    
-    print_step(f"START: user_id={user_id}", "info")
-    
-    # Foydalanuvchini yaratish
-    await api_call('/create-user', 'POST', {
-        'telegram_id': user_id,
-        'username': username,
-        'first_name': first_name,
-        'last_name': last_name
-    })
-    
-    webapp_url = f"{WEBAPP_URL}?user_id={user_id}&api_url={API_URL}"
-    
-    kb = []
-    if user_id in ADMIN_IDS:
-        kb.append([InlineKeyboardButton(text="👑 Katta Admin Panel", callback_data="superadmin_panel")])
-    
-    # Kanal adminligini tekshirish
-    admin_result = await api_call('/admin/me', 'GET', {'telegram_id': user_id})
-    if admin_result.get('success') and admin_result.get('admin'):
-        kb.append([InlineKeyboardButton(text="⚙️ Kanal Boshqaruvi", callback_data="channel_manage")])
-    
-    kb.extend([
-        [InlineKeyboardButton(text="📝 Yangi e'lon", web_app=WebAppInfo(url=webapp_url))],
-        [InlineKeyboardButton(text="📋 Mening e'lonlarim", callback_data="my_ads")],
-        [InlineKeyboardButton(text="🔍 Qidirish", callback_data="search_menu")],
-        [InlineKeyboardButton(text="📬 Xabarlar", callback_data="notifications_menu")],
-        [InlineKeyboardButton(text="🤝 Biz bilan hamkorlik", callback_data="cooperation")]
-    ])
-    
-    # Xabarlarni tekshirish
-    notif_result = await api_call(f'/notifications/{user_id}', 'GET')
-    unread_count = len(notif_result.get('notifications', []))
-    
-    welcome_text = (
-        f"👋 Assalomu alaykum, {first_name}!\n\n"
-        f"🚀 <b>E'LON JOYLASH BOTIGA XUSH KELIBSIZ!</b>\n\n"
-        f"✅ <b>Avzalliklarimiz:</b>\n"
-        f"• Ro'yxatdan o'tish yo'q\n"
-        f"• 1 ta telefon YOKI Telegram username etarli\n"
-        f"• Rasm yuklash mumkin\n\n"
-    )
-    
-    if unread_count > 0:
-        welcome_text += f"📬 <b>Yangi xabarlar:</b> {unread_count} ta\n\n"
-    
-    await message.answer(
-        welcome_text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-        parse_mode="HTML"
-    )
-    print_step("Xabar yuborildi", "success")
-
-# ==================== HELP ====================
-@dp.message(Command("help"))
-async def help_command(message: Message):
-    await message.answer(
-        "❓ <b>Yordam</b>\n\n"
-        "📝 <b>E'lon berish:</b> /start → Yangi e'lon tugmasini bosing\n"
-        "📋 <b>E'lonlarim:</b> /my_ads\n"
-        "🔍 <b>Qidirish:</b> /search <so'z>\n"
-        "📬 <b>Xabarlar:</b> /notifications\n\n"
-        "📞 <b>Muammo bo'lsa:</b> @admin_username ga murojaat qiling"
-    )
-
-# ==================== MY ADS ====================
-@dp.message(Command("my_ads"))
-async def my_ads_command(message: Message):
-    await my_ads_callback(message)
-
-@dp.callback_query(F.data == "my_ads")
-async def my_ads_callback(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    page = 1
-    
-    await callback.answer("⏳ E'lonlar yuklanmoqda...")
-    
-    result = await api_call('/user/ads', 'GET', {'telegram_id': user_id, 'page': page, 'per_page': 10})
-    
-    if result.get('success') and result.get('ads'):
-        ads = result.get('ads')
-        
-        text = "📋 <b>MENING E'LONLARIM</b>\n\n"
-        for ad in ads[:5]:
-            text += f"{ad.get('category_emoji', '📦')} <b>{ad.get('display_title', 'Elon')}</b>\n"
-            text += f"💰 {ad.get('price', 0)} $ • 📅 {ad.get('created_date', 'Nomalum')}\n"
-            text += f"📊 {ad.get('status_text', 'Nomalum')}\n"
-            text += f"🆔 #{ad.get('id')}\n━━━━━━━━━━━━━━━\n"
-        
-        kb = []
-        for ad in ads[:5]:
-            kb.append([InlineKeyboardButton(
-                text=f"👁 #{ad.get('id')} - {ad.get('display_title', 'Elon')[:30]}",
-                callback_data=f"view_ad:{ad.get('id')}"
-            )])
-        kb.append([InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")])
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-            parse_mode="HTML"
-        )
-    else:
-        await callback.message.edit_text(
-            "📭 <b>Sizda hali e'lonlar mavjud emas.</b>",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")]
-            ]),
-            parse_mode="HTML"
-        )
-    
-    await callback.answer()
-
-# ==================== VIEW AD ====================
-@dp.callback_query(F.data.startswith("view_ad:"))
-async def view_ad_callback(callback: types.CallbackQuery):
-    ad_id = int(callback.data.split(":")[1])
-    
-    await callback.answer("⏳ Ma'lumot yuklanmoqda...")
-    
-    result = await api_call(f'/ad/{ad_id}', 'GET')
-    
-    if result.get('success'):
-        ad = result.get('ad')
-        
-        text = f"<b>📌 E'LON #{ad.get('id')}</b>\n\n"
-        text += f"📂 <b>Kategoriya:</b> {ad.get('category_name', ad.get('category'))}\n"
-        text += f"💰 <b>Narx:</b> {ad.get('price')} $\n"
-        text += f"📍 <b>Joylashuv:</b> {ad.get('location', 'Korsatilmagan')}\n"
-        text += f"📞 <b>Aloqa:</b> {ad.get('tel1', ad.get('telegram_username', 'Yoq'))}\n"
-        text += f"📊 <b>Holat:</b> {ad.get('status_text')}\n"
-        
-        if ad.get('description'):
-            text += f"\n📄 <b>Tavsif:</b>\n{ad.get('description')[:200]}..."
-        
-        kb = [
-            [InlineKeyboardButton(text="🗑 E'lonni o'chirish", callback_data=f"delete_ad:{ad_id}")],
-            [InlineKeyboardButton(text="↩️ Orqaga", callback_data="my_ads")],
-            [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")]
-        ]
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-            parse_mode="HTML"
-        )
-    else:
-        await callback.message.edit_text("❌ E'lon topilmadi!")
-    
-    await callback.answer()
-
-# ==================== DELETE AD ====================
-@dp.callback_query(F.data.startswith("delete_ad:"))
-async def delete_ad_callback(callback: types.CallbackQuery):
-    ad_id = int(callback.data.split(":")[1])
-    user_id = callback.from_user.id
-    
-    await callback.answer("⏳ E'lon o'chirilmoqda...")
-    
-    result = await api_call(f'/ad/{ad_id}/delete', 'POST', {'user_id': user_id})
-    
-    if result.get('success'):
-        await callback.message.edit_text(f"✅ E'lon #{ad_id} muvaffaqiyatli o'chirildi!")
-    else:
-        await callback.message.edit_text(f"❌ E'lon #{ad_id} o'chirishda xatolik!")
-    
-    await callback.answer()
-
-# ==================== SEARCH ====================
-@dp.message(Command("search"))
-async def search_command(message: Message):
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer(
-            "🔍 <b>Qidiruv komandasi</b>\n\nFormat: /search <so'z>\n\nMisol: /search iPhone",
-            parse_mode="HTML"
-        )
-        return
-    
-    query = args[1]
-    await message.answer("🔍 Qidiruv boshlandi...")
-    
-    result = await api_call('/search-ads', 'GET', {'q': query})
-    
-    if result.get('success') and result.get('ads'):
-        ads = result.get('ads')[:5]
-        text = f"🔍 <b>Qidiruv natijalari:</b> \"{query}\"\n\n"
-        
-        for ad in ads:
-            text += f"🆔 #{ad.get('id')} - {ad.get('title')}\n"
-            text += f"💰 {ad.get('price')} $ • 📍 {ad.get('location', 'Nomalum')}\n━━━━━━━━━━━━━━━\n"
-        
-        kb = []
-        for ad in ads:
-            kb.append([InlineKeyboardButton(
-                text=f"👁 #{ad.get('id')} - {ad.get('title')[:30]}",
-                callback_data=f"view_ad:{ad.get('id')}"
-            )])
-        kb.append([InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")])
-        
-        await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-    else:
-        await message.answer(f"🔍 \"{query}\" bo'yicha hech qanday e'lon topilmadi.")
-
-@dp.callback_query(F.data == "search_menu")
-async def search_menu_callback(callback: types.CallbackQuery):
-    await callback.message.edit_text(
-        "🔍 <b>QIDIRUV</b>\n\n"
-        "E'lonlarni qidirish uchun quyidagi formatlardan birini ishlating:\n\n"
-        "1️⃣ <b>So'z bo'yicha:</b>\n<code>/search iPhone</code>\n\n"
-        "2️⃣ <b>Joylashuv bo'yicha:</b>\n<code>/search Toshkent</code>\n\n"
-        "💡 <b>Maslahat:</b> Aniq so'zlardan foydalaning.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")]
-        ]),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-# ==================== NOTIFICATIONS ====================
-@dp.message(Command("notifications"))
-async def notifications_command(message: Message):
-    telegram_id = message.from_user.id
-    
-    result = await api_call(f'/notifications/{telegram_id}', 'GET')
-    
-    if result.get('success') and result.get('notifications'):
-        notifications = result.get('notifications')[:10]
-        text = "📬 <b>XABARLAR</b>\n\n"
-        
-        for n in notifications:
-            type_emoji = {'approved': '✅', 'rejected': '❌', 'expired': '⌛️', 'reminder': '⏰'}.get(n.get('type'), '📢')
-            text += f"{type_emoji} {n.get('message')}\n━━━━━━━━━━━━━━━\n"
-            await api_call(f'/notifications/mark-read/{n.get("id")}', 'POST')
-        
-        await message.answer(text, parse_mode="HTML")
-    else:
-        await message.answer("📬 Sizda yangi xabarlar yo'q.")
-
-@dp.callback_query(F.data == "notifications_menu")
-async def notifications_menu_callback(callback: types.CallbackQuery):
-    await notifications_command(callback.message)
-    await callback.answer()
-
-# ==================== COOPERATION ====================
-@dp.callback_query(F.data == "cooperation")
-async def cooperation_callback(callback: types.CallbackQuery):
-    await callback.message.edit_text(
-        "🤝 <b>BIZ BILAN HAMKORLIK</b>\n\n"
-        "📊 <b>Statistika:</b>\n"
-        "• Kunlik ko'rishlar: 10,000+\n"
-        "• Faol foydalanuvchilar: 5,000+\n\n"
-        "📞 <b>Bog'lanish:</b>\n"
-        "Telegram: @admin_username",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")]
-        ]),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-# ==================== BACK TO MAIN ====================
-@dp.callback_query(F.data == "back_to_main")
-async def back_to_main_callback(callback: types.CallbackQuery):
-    await start_command(callback.message)
-    await callback.answer()
-
-# ==================== WEBAPP DATA ====================
-@dp.message(F.web_app_data)
-async def handle_web_app_data(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    
-    try:
-        data = json.loads(message.web_app_data.data)
-        action = data.get("action")
-        
-        print_step(f"WEBAPP: user_id={user_id}, action={action}", "info")
-        
-        if action == "submit_ad":
-            await state.update_data(ad_data=data)
-            
-            channels_result = await api_call('/channels', 'GET')
-            channels = channels_result.get('channels', [])
-            
-            if not channels:
-                await message.answer("❌ Hech qanday kanal mavjud emas!")
-                return
-            
-            kb = []
-            for channel in channels:
-                category = data.get('category')
-                if category == 'phone':
-                    price = channel.get('phone_price', 10000)
-                elif category == 'car':
-                    price = channel.get('car_price', 20000)
-                elif category == 'property':
-                    price = channel.get('property_price', 30000)
-                else:
-                    price = channel.get('mixed_price', 15000)
-                
-                card_status = "✅" if channel.get('card_number') else "⚠️"
-                kb.append([InlineKeyboardButton(
-                    text=f"{card_status} {channel['channel_name']} - {int(price):,} so'm",
-                    callback_data=f"select_channel:{channel['id']}:{int(price)}"
-                )])
-            
-            kb.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel_ad")])
-            
-            await message.answer(
-                f"✅ <b>E'lon ma'lumotlari qabul qilindi!</b>\n\n"
-                f"📂 <b>Kategoriya:</b> {data.get('category')}\n"
-                f"💰 <b>Narx:</b> {data.get('price')} $\n\n"
-                f"📢 <b>Kanal tanlang:</b>",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-                parse_mode="HTML"
-            )
-            await state.set_state(AdStates.waiting_for_check)
-            
-        elif action == "upload_check":
-            ad_id = data.get('ad_id')
-            await state.update_data(ad_id=ad_id, channel_id=data.get('channel_id'))
-            await message.answer(
-                "📸 To'lov chekini rasm sifatida yuboring:\n\n"
-                "Chekda to'lov summasi va vaqti ko'rinishi kerak",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel_check")]
-                ])
-            )
-            await state.set_state(AdStates.waiting_for_check)
-            
-        elif action == "delete_ad":
-            ad_id = data.get('ad_id')
-            result = await api_call(f'/ad/{ad_id}/delete', 'POST', {'user_id': user_id})
-            if result.get('success'):
-                await message.answer(f"✅ E'lon #{ad_id} o'chirildi.")
-            else:
-                await message.answer(f"❌ Xatolik!")
-                
-    except Exception as e:
-        print_step(f"WebApp xatosi: {e}", "error")
-        await message.answer("❌ Xatolik yuz berdi!")
-
-# ==================== KANAL TANLASH ====================
-@dp.callback_query(F.data.startswith("select_channel:"), StateFilter(AdStates.waiting_for_check))
-async def handle_channel_selection(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        parts = callback.data.split(":")
-        channel_id = int(parts[1])
-        price = int(parts[2])
-        user_id = callback.from_user.id
-        
-        state_data = await state.get_data()
-        ad_data = state_data.get('ad_data')
-        
-        if not ad_data:
-            await callback.message.edit_text("❌ Xatolik yuz berdi!")
-            await state.clear()
-            return
-        
-        ad_data['selected_channel'] = {'id': channel_id, 'price': price}
-        
-        result = await api_call('/create-ad', 'POST', {
-            'user_id': user_id,
-            'username': callback.from_user.username,
-            'first_name': callback.from_user.first_name,
-            'data': ad_data
-        })
-        
-        if not result.get('success'):
-            await callback.answer("❌ Xatolik!", show_alert=True)
-            return
-        
-        ad_id = result.get('ad_id')
-        await state.update_data(ad_id=ad_id, channel_id=channel_id)
-        
-        payment_info = await api_call(f'/payment-info/{channel_id}', 'GET')
-        info = payment_info.get('payment_info', {})
-        
-        payment_text = "💳 <b>TO'LOV MA'LUMOTLARI</b>\n\n"
-        if info.get('card_number'):
-            payment_text += f"🏦 <b>Karta:</b> <code>{info['card_number']}</code>\n"
-        else:
-            payment_text += "⚠️ Karta ma'lumotlari kiritilmagan!\n"
-        
-        payment_text += f"\n💰 <b>Summa:</b> {int(price):,} so'm\n"
-        payment_text += f"📢 <b>Kanal:</b> {info.get('channel_name', 'Nomalum')}\n\n"
-        payment_text += f"💡 To'lov qilgandan so'ng chekni yuklang."
-        
-        kb = [
-            [InlineKeyboardButton(text="💳 To'lov qildim", callback_data=f"payment_done:{ad_id}:{channel_id}")],
-            [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel_payment")]
-        ]
-        
-        await callback.message.edit_text(
-            payment_text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-            parse_mode="HTML"
-        )
-        await callback.answer()
-        
-    except Exception as e:
-        print_step(f"Channel selection xatosi: {e}", "error")
-        await callback.answer("❌ Xatolik!", show_alert=True)
-
-# ==================== TO'LOV TASDIQLASH ====================
-@dp.callback_query(F.data.startswith("payment_done:"))
-async def handle_payment_confirmation(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        parts = callback.data.split(":")
-        ad_id = int(parts[1])
-        channel_id = int(parts[2])
-        user_id = callback.from_user.id
-        
-        await state.update_data(ad_id=ad_id, channel_id=channel_id)
-        
-        webapp_url = f"{WEBAPP_URL}?user_id={user_id}&ad_id={ad_id}&channel_id={channel_id}&api_url={API_URL}"
-        
-        await callback.message.edit_text(
-            f"✅ <b>To'lov qilganingiz tasdiqlandi!</b>\n\n"
-            f"📝 <b>E'lon ID:</b> #{ad_id}\n\n"
-            f"📸 Chekni yuklang:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📸 Chek yuklash", web_app=WebAppInfo(url=webapp_url))],
-                [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel_payment")]
-            ]),
-            parse_mode="HTML"
-        )
-        await callback.answer()
-        
-    except Exception as e:
-        print_step(f"Payment xatosi: {e}", "error")
-        await callback.answer("❌ Xatolik!", show_alert=True)
-
-# ==================== CHEK YUKLASH ====================
-@dp.message(AdStates.waiting_for_check, F.photo)
-async def handle_check_photo(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    
-    try:
-        state_data = await state.get_data()
-        ad_id = state_data.get('ad_id')
-        
-        if not ad_id:
-            await message.answer("❌ E'lon ID topilmadi!")
-            await state.clear()
-            return
-        
-        photo = message.photo[-1]
-        file_info = await bot.get_file(photo.file_id)
-        file = await bot.download_file(file_info.file_path)
-        
-        # Bu yerda API ga chek yuborish kerak
-        # async with aiohttp.ClientSession() as session:
-        #     form = aiohttp.FormData()
-        #     form.add_field('check_image', file.read(), filename=f'check_{ad_id}.jpg')
-        #     form.add_field('ad_id', str(ad_id))
-        #     await session.post(f"{API_URL}/upload-check", headers={'X-API-Key': API_KEY}, data=form)
-        
-        await message.answer(
-            f"✅ <b>Chek qabul qilindi!</b>\n\n"
-            f"📝 <b>E'lon ID:</b> #{ad_id}\n"
-            f"⏳ <b>Admin tekshiruvi kutilmoqda...</b>",
-            parse_mode="HTML"
-        )
-        await state.clear()
-        
-    except Exception as e:
-        print_step(f"Check xatosi: {e}", "error")
-        await message.answer("❌ Xatolik yuz berdi!")
-
-# ==================== BEKOR QILISHLAR ====================
-@dp.callback_query(F.data == "cancel_check", StateFilter(AdStates.waiting_for_check))
-async def cancel_check_callback(callback: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.edit_text("❌ Bekor qilindi.")
-    await callback.answer()
-
-@dp.callback_query(F.data == "cancel_ad")
-async def cancel_ad_callback(callback: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.edit_text("❌ Bekor qilindi.")
-    await callback.answer()
-
-@dp.callback_query(F.data == "cancel_payment")
-async def cancel_payment_callback(callback: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.edit_text("❌ Bekor qilindi.")
-    await callback.answer()
-
-# ==================== KANAL ADMIN PANEL ====================
-@dp.callback_query(F.data == "channel_manage")
-async def channel_manage_callback(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    
-    admin_result = await api_call('/admin/me', 'GET', {'telegram_id': user_id})
-    
-    if not admin_result.get('success') or not admin_result.get('admin'):
-        await callback.answer("❌ Siz kanal admini emassiz!")
-        return
-    
-    channel_admin = admin_result.get('admin')
-    
-    kb = [
-        [InlineKeyboardButton(text="💳 Karta ma'lumotlari", callback_data="admin_card")],
-        [InlineKeyboardButton(text="💰 Narxlarni sozlash", callback_data="admin_prices")],
-        [InlineKeyboardButton(text="⏳ Kutilayotgan e'lonlar", callback_data="admin_pending")],
-        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")]
-    ]
-    
-    text = (
-        f"⚙️ <b>KANAL BOSHQARUVI</b>\n\n"
-        f"📢 Kanal: {channel_admin.get('channel_name')}\n"
-        f"💰 Sizning foizingiz: {channel_admin.get('commission_percent')}%\n\n"
-        f"Quyidagi bo'limlardan birini tanlang:"
-    )
-    
-    await callback.message.edit_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data == "admin_pending")
-async def admin_pending_callback(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    
-    pending_result = await api_call('/admin/pending-ads', 'GET', {'admin_telegram_id': user_id})
-    
-    if not pending_result.get('success'):
-        await callback.answer("❌ Xatolik!")
-        return
-    
-    pending_ads = pending_result.get('ads', [])
-    
-    if not pending_ads:
-        await callback.message.edit_text(
-            "⏳ <b>Kutilayotgan e'lonlar yo'q!</b>",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="↩️ Orqaga", callback_data="channel_manage")]
-            ]),
-            parse_mode="HTML"
-        )
-        return
-    
-    text = "⏳ <b>KUTILAYOTGAN E'LONLAR</b>\n\n"
-    for ad in pending_ads[:5]:
-        text += f"🆔 #{ad.get('id')} - {ad.get('title')}\n💰 {ad.get('payment_amount', 0):,} so'm\n━━━━━━━━━━━━━━━\n"
-    
-    kb = []
-    for ad in pending_ads[:5]:
-        ad_id = ad.get('id')
-        kb.append([
-            InlineKeyboardButton(text=f"✅ #{ad_id} tasdiqlash", callback_data=f"approve_ad:{ad_id}"),
-            InlineKeyboardButton(text=f"❌ #{ad_id} rad etish", callback_data=f"reject_ad:{ad_id}")
-        ])
-    kb.append([InlineKeyboardButton(text="↩️ Orqaga", callback_data="channel_manage")])
-    
-    await callback.message.edit_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("approve_ad:"))
-async def approve_ad_callback(callback: types.CallbackQuery):
-    ad_id = int(callback.data.split(":")[1])
-    user_id = callback.from_user.id
-    
-    await callback.answer("⏳ Tasdiqlanmoqda...")
-    
-    result = await api_call(f'/admin/approve/{ad_id}', 'POST', {'admin_telegram_id': user_id})
-    
-    if result.get('success'):
-        await callback.answer(f"✅ E'lon #{ad_id} tasdiqlandi!", show_alert=True)
-        await admin_pending_callback(callback)
-    else:
-        await callback.answer("❌ Xatolik!", show_alert=True)
-
-@dp.callback_query(F.data.startswith("reject_ad:"))
-async def reject_ad_callback(callback: types.CallbackQuery, state: FSMContext):
-    ad_id = int(callback.data.split(":")[1])
-    await state.update_data(reject_ad_id=ad_id)
-    await callback.message.answer(f"❌ E'lon #{ad_id} ni rad etish sababini yozing:")
-    await state.set_state(ChannelAdminStates.waiting_for_reject_reason)
-    await callback.answer()
-
-@dp.message(ChannelAdminStates.waiting_for_reject_reason)
-async def process_reject_reason(message: Message, state: FSMContext):
-    state_data = await state.get_data()
-    ad_id = state_data.get('reject_ad_id')
-    reason = message.text.strip()
-    user_id = message.from_user.id
-    
-    result = await api_call(f'/admin/reject/{ad_id}', 'POST', {
-        'admin_telegram_id': user_id,
-        'reason': reason
-    })
-    
-    if result.get('success'):
-        await message.answer(f"✅ E'lon #{ad_id} rad etildi!")
-    else:
-        await message.answer("❌ Xatolik!")
-    
-    await state.clear()
-
-@dp.callback_query(F.data == "admin_card")
-async def admin_card_callback(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text(
-        f"💳 <b>Karta ma'lumotlari</b>\n\n"
-        f"Karta raqamingizni yuboring:\n"
-        f"<i>Format: 8600123456789012|Karta egasi</i>",
-        parse_mode="HTML"
-    )
-    await state.set_state(ChannelAdminStates.waiting_for_card_info)
-    await callback.answer()
-
-@dp.message(ChannelAdminStates.waiting_for_card_info)
-async def process_card_info(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    card_text = message.text.strip()
-    
-    if '|' in card_text:
-        parts = card_text.split('|')
-        card_number = parts[0].strip()
-        card_holder = parts[1].strip() if len(parts) > 1 else ""
-    else:
-        card_number = card_text
-        card_holder = ""
-    
-    card_number = card_number.replace(' ', '')
-    if not card_number.isdigit() or len(card_number) < 8:
-        await message.answer("❌ Noto'g'ri karta raqami!")
-        return
-    
-    result = await api_call('/admin/update-card', 'POST', {
-        'telegram_id': user_id,
-        'card_number': card_number,
-        'card_holder': card_holder
-    })
-    
-    if result.get('success'):
-        await message.answer(f"✅ Karta ma'lumotlari saqlandi!")
-        await state.clear()
-    else:
-        await message.answer("❌ Xatolik!")
-
-@dp.callback_query(F.data == "admin_prices")
-async def admin_prices_callback(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    
-    admin_result = await api_call('/admin/me', 'GET', {'telegram_id': user_id})
-    channel_admin = admin_result.get('admin', {})
-    
-    kb = [
-        [InlineKeyboardButton(text=f"📱 Telefon: {int(channel_admin.get('phone_price', 10000)):,} so'm", callback_data="price_phone")],
-        [InlineKeyboardButton(text=f"🚗 Mashina: {int(channel_admin.get('car_price', 20000)):,} so'm", callback_data="price_car")],
-        [InlineKeyboardButton(text=f"🏠 Mulk: {int(channel_admin.get('property_price', 30000)):,} so'm", callback_data="price_property")],
-        [InlineKeyboardButton(text=f"📦 Aralash: {int(channel_admin.get('mixed_price', 15000)):,} so'm", callback_data="price_mixed")],
-        [InlineKeyboardButton(text="↩️ Orqaga", callback_data="channel_manage")]
-    ]
-    
-    await callback.message.edit_text(
-        f"💰 <b>NARXLARNI SOZLASH</b>\n\n"
-        f"O'zgartirmoqchi bo'lgan narzingizni tanlang:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("price_"))
-async def select_price_type(callback: types.CallbackQuery, state: FSMContext):
-    price_type = callback.data.split("_")[1]
-    await state.update_data(price_type=price_type)
-    await callback.message.edit_text(
-        f"💰 <b>Yangi narxni kiriting</b>\n\nFaqat raqam:",
-        parse_mode="HTML"
-    )
-    await state.set_state(ChannelAdminStates.waiting_for_price_update)
-    await callback.answer()
-
-@dp.message(ChannelAdminStates.waiting_for_price_update)
-async def process_new_price(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    
-    try:
-        new_price = float(message.text.replace(' ', ''))
-        state_data = await state.get_data()
-        price_type = state_data.get('price_type')
-        
-        result = await api_call('/admin/update-price', 'POST', {
-            'telegram_id': user_id,
-            'price_type': price_type,
-            'price': new_price
-        })
-        
-        if result.get('success'):
-            await message.answer(f"✅ Narx yangilandi!")
-            await state.clear()
-        else:
-            await message.answer("❌ Xatolik!")
-    except ValueError:
-        await message.answer("❌ Faqat raqam kiriting!")
-
-# ==================== SUPER ADMIN PANEL ====================
-@dp.callback_query(F.data == "superadmin_panel")
-async def superadmin_panel_callback(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    
-    if user_id not in ADMIN_IDS:
-        await callback.answer("❌ Faqat katta admin!")
-        return
-    
-    kb = [
-        [InlineKeyboardButton(text="📊 Statistika", callback_data="super_stats")],
-        [InlineKeyboardButton(text="📢 Kanallar", callback_data="super_channels_list")],
-        [InlineKeyboardButton(text="👥 Adminlar", callback_data="super_admins_list")],
-        [InlineKeyboardButton(text="➕ Yangi kanal", callback_data="super_add_channel")],
-        [InlineKeyboardButton(text="👤 Yangi admin", callback_data="super_add_admin")],
-        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_to_main")]
-    ]
-    
-    await callback.message.edit_text(
-        f"👑 <b>KATTA ADMIN PANELI</b>\n\nQuyidagi bo'limlardan birini tanlang:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data == "super_stats")
-async def super_stats_callback(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    
-    if user_id not in ADMIN_IDS:
-        await callback.answer("❌ Faqat katta admin!")
-        return
-    
-    result = await api_call('/admin/stats', 'GET')
-    
-    if result.get('success'):
-        stats = result.get('stats', {})
-        text = (
-            f"📊 <b>UMUMIY STATISTIKA</b>\n\n"
-            f"👥 Foydalanuvchilar: {stats.get('total_users', 0)} ta\n"
-            f"📢 Kanallar: {stats.get('total_channels', 0)} ta\n"
-            f"👤 Adminlar: {stats.get('total_admins', 0)} ta\n"
-            f"📝 Jami e'lonlar: {stats.get('total_ads', 0)} ta\n"
-            f"✅ Faol e'lonlar: {stats.get('active_ads', 0)} ta\n"
-            f"⏳ Kutilayotgan: {stats.get('pending_ads', 0)} ta\n"
-            f"💰 Daromad: {stats.get('total_income', 0):,.0f} so'm"
-        )
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="↩️ Orqaga", callback_data="superadmin_panel")]
-            ]),
-            parse_mode="HTML"
-        )
-    else:
-        await callback.message.edit_text("❌ Xatolik!")
-    
-    await callback.answer()
-
-@dp.callback_query(F.data == "super_channels_list")
-async def super_channels_list_callback(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    
-    if user_id not in ADMIN_IDS:
-        await callback.answer("❌ Faqat katta admin!")
-        return
-    
-    result = await api_call('/admin/channels', 'GET')
-    
-    if result.get('success'):
-        channels = result.get('channels', [])
-        text = "📢 <b>KANALLAR</b>\n\n"
-        for ch in channels[:10]:
-            text += f"<b>{ch.get('channel_name')}</b>\n"
-            text += f"📊 E'lonlar: {ch.get('ads_count', 0)} ta\n"
-            text += f"━━━━━━━━━━━━━━━\n"
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="↩️ Orqaga", callback_data="superadmin_panel")]
-            ]),
-            parse_mode="HTML"
-        )
-    else:
-        await callback.message.edit_text("❌ Xatolik!")
-    
-    await callback.answer()
-
-@dp.callback_query(F.data == "super_admins_list")
-async def super_admins_list_callback(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    
-    if user_id not in ADMIN_IDS:
-        await callback.answer("❌ Faqat katta admin!")
-        return
-    
-    result = await api_call('/admin/admins', 'GET')
-    
-    if result.get('success'):
-        admins = result.get('admins', [])
-        text = "👥 <b>ADMINLAR</b>\n\n"
-        for ad in admins[:10]:
-            text += f"<b>{ad.get('admin_name', 'Ismsiz')}</b>\n"
-            text += f"👤 @{ad.get('admin_username', 'yoq')}\n"
-            text += f"📢 {ad.get('channel_name')}\n"
-            text += f"💰 Foiz: {ad.get('commission_percent')}%\n"
-            text += f"━━━━━━━━━━━━━━━\n"
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="↩️ Orqaga", callback_data="superadmin_panel")]
-            ]),
-            parse_mode="HTML"
-        )
-    else:
-        await callback.message.edit_text("❌ Xatolik!")
-    
-    await callback.answer()
-
-@dp.callback_query(F.data == "super_add_channel")
-async def super_add_channel_callback(callback: types.CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
-    
-    if user_id not in ADMIN_IDS:
-        await callback.answer("❌ Faqat katta admin!")
-        return
-    
-    await callback.message.edit_text(
-        "📢 <b>YANGI KANAL QO'SHISH</b>\n\n"
-        "1-qadam: Kanal ID sini yuboring:\n"
-        "<i>Masalan: -1001234567890</i>",
-        parse_mode="HTML"
-    )
-    await state.set_state(SuperAdminStates.waiting_for_channel_id)
-    await callback.answer()
-
-@dp.message(SuperAdminStates.waiting_for_channel_id)
-async def process_channel_id(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-    
-    try:
-        channel_id = int(message.text.strip())
-        
-        try:
-            chat = await bot.get_chat(channel_id)
-            channel_name = chat.title
-            channel_username = chat.username
-        except:
-            await message.answer("❌ Kanal topilmadi yoki bot admin emas!")
-            return
-        
-        await state.update_data(channel_id=channel_id, channel_name=channel_name, channel_username=channel_username)
-        
-        await message.answer(
-            f"✅ Kanal: {channel_name}\n\n"
-            f
