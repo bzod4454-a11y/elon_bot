@@ -130,8 +130,8 @@ logger = logging.getLogger(__name__)
 # Flask app
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
-app.config['SECRET_KEY'] = JWT_SECRET_KEY or secrets.token_urlsafe(32)
-app.config['JWT_SECRET_KEY'] = JWT_SECRET_KEY or secrets.token_urlsafe(32)
+app.config['SECRET_KEY'] = JWT_SECRET_KEY or secrets.token_hex(32)
+app.config['JWT_SECRET_KEY'] = JWT_SECRET_KEY or secrets.token_hex(32)
 app.config['JWT_TOKEN_LOCATION'] = ['headers']
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_ABSOLUTE_PATH}'
@@ -154,13 +154,16 @@ limiter = Limiter(
 )
 
 # CORS
-if CORS_ALLOWED_ORIGINS:
-    CORS(app, origins=CORS_ALLOWED_ORIGINS, supports_credentials=True)
-else:
-    CORS(app, supports_credentials=True)
+CORS(app, origins=CORS_ALLOWED_ORIGINS if CORS_ALLOWED_ORIGINS else "*", supports_credentials=True)
 
 # Shifrlash
 cipher = Fernet(ENCRYPTION_KEY.encode()) if ENCRYPTION_KEY else None
+if not cipher:
+    # Agar kalit bo'lmasa, yangi kalit yaratish
+    key = Fernet.generate_key()
+    cipher = Fernet(key)
+    print_step(f"Yangi shifrlash kaliti yaratildi: {key.decode()}", "warning")
+    print_step("Iltimos, bu kalitni .env fayliga ENCRYPTION_KEY sifatida qo'shing", "warning")
 
 # ==================== MODELLAR ====================
 class User(db.Model):
@@ -188,7 +191,7 @@ class ChannelAdmin(db.Model):
     __tablename__ = 'channel_admins'
     id = db.Column(db.Integer, primary_key=True)
     channel_id = db.Column(db.Integer, db.ForeignKey('channels.id'), nullable=False)
-    admin_telegram_id = db.Column(db.Integer, unique=True, nullable=False)
+    admin_telegram_id = db.Column(db.Integer, nullable=False)
     admin_username = db.Column(db.String(100))
     admin_name = db.Column(db.String(200))
     card_number = db.Column(db.String(500))
@@ -202,7 +205,7 @@ class ChannelAdmin(db.Model):
     is_active = db.Column(db.Integer, default=1)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    channel = db.relationship('Channel', backref='admins')
+    channel = db.relationship('Channel', backref='admins', foreign_keys=[channel_id])
 
 class Ad(db.Model):
     __tablename__ = 'ads'
@@ -267,9 +270,9 @@ class Ad(db.Model):
     published_message_id = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    user = db.relationship('User', backref='ads')
-    channel = db.relationship('Channel', backref='ads')
-    channel_admin = db.relationship('ChannelAdmin', backref='ads')
+    user = db.relationship('User', backref='ads', foreign_keys=[user_id])
+    channel = db.relationship('Channel', backref='ads', foreign_keys=[channel_id])
+    channel_admin = db.relationship('ChannelAdmin', backref='ads', foreign_keys=[channel_admin_id])
 
 class Payment(db.Model):
     __tablename__ = 'payments'
@@ -286,8 +289,8 @@ class Payment(db.Model):
     admin_message = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    ad = db.relationship('Ad', backref='payments')
-    channel_admin = db.relationship('ChannelAdmin', backref='payments')
+    ad = db.relationship('Ad', backref='payments', foreign_keys=[ad_id])
+    channel_admin = db.relationship('ChannelAdmin', backref='payments', foreign_keys=[channel_admin_id])
 
 class AdminVerification(db.Model):
     __tablename__ = 'admin_verifications'
@@ -298,8 +301,8 @@ class AdminVerification(db.Model):
     message = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    ad = db.relationship('Ad', backref='verifications')
-    admin = db.relationship('ChannelAdmin', backref='verifications')
+    ad = db.relationship('Ad', backref='verifications', foreign_keys=[ad_id])
+    admin = db.relationship('ChannelAdmin', backref='verifications', foreign_keys=[admin_id])
 
 class Notification(db.Model):
     __tablename__ = 'notifications'
@@ -359,7 +362,7 @@ def save_media_file(file, category: str, user_id: int) -> dict:
         
         file_bytes = file.read()
         
-        if file.content_type.startswith('image/'):
+        if file.content_type and file.content_type.startswith('image/'):
             file_bytes = optimize_image(file_bytes)
         
         filepath = os.path.join(MEDIA_ABSOLUTE_DIR, unique_filename)
@@ -380,12 +383,11 @@ def save_media_file(file, category: str, user_id: int) -> dict:
 def save_check_image(file, ad_id: int) -> str:
     """Chek rasmni saqlash"""
     try:
-        original_filename = secure_filename(file.filename)
         unique_filename = f"check_{ad_id}_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
         
         file_bytes = file.read()
         
-        if file.content_type.startswith('image/'):
+        if file.content_type and file.content_type.startswith('image/'):
             file_bytes = optimize_image(file_bytes, max_size=(800, 800), quality=75)
         
         filepath = os.path.join(CHECKS_ABSOLUTE_DIR, unique_filename)
@@ -398,6 +400,7 @@ def save_check_image(file, ad_id: int) -> str:
         return None
 
 def get_or_create_user(telegram_id: int, username: str = None, first_name: str = None, last_name: str = None) -> int:
+    """Foydalanuvchini olish yoki yaratish"""
     user = User.query.filter_by(telegram_id=telegram_id).first()
     if user:
         return user.id
@@ -413,6 +416,7 @@ def get_or_create_user(telegram_id: int, username: str = None, first_name: str =
     return user.id
 
 def create_notification(user_telegram_id: int, ad_id: int, type: str, message: str):
+    """Push-xabar yaratish"""
     try:
         notification = Notification(
             user_telegram_id=user_telegram_id,
@@ -433,6 +437,12 @@ def create_notification(user_telegram_id: int, ad_id: int, type: str, message: s
 def require_api_key(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        try:
+            verify_jwt_in_request(optional=True)
+            return f(*args, **kwargs)
+        except:
+            pass
+        
         api_key = request.headers.get('X-API-Key')
         if not api_key or api_key != API_KEY:
             return jsonify({'success': False, 'error': 'Unauthorized'}), 401
@@ -551,14 +561,8 @@ def get_user_ads():
                 'title': ad.title,
                 'phone_model': ad.phone_model,
                 'car_model': ad.car_model,
-                'property_type': ad.property_type,
-                'status_class': 'status-pending'
+                'property_type': ad.property_type
             }
-            
-            if ad.status == 'active':
-                ad_dict['status_class'] = 'status-published'
-            elif ad.status == 'expired':
-                ad_dict['status_class'] = 'status-expired'
             
             if ad_dict['category'] == 'phone' and ad.phone_model:
                 ad_dict['display_title'] = ad.phone_model
@@ -606,15 +610,20 @@ def get_channels():
                 'channel_name': channel.channel_name,
                 'channel_username': channel.channel_username,
                 'description': channel.description,
-                'is_active': channel.is_active,
-                'phone_price': admin.phone_price if admin else 10000,
-                'car_price': admin.car_price if admin else 20000,
-                'property_price': admin.property_price if admin else 30000,
-                'mixed_price': admin.mixed_price if admin else 15000,
-                'card_number': bool(admin and admin.card_number),
-                'card_holder': admin.card_holder if admin else None,
-                'admin_username': admin.admin_username if admin else None
+                'is_active': channel.is_active
             }
+            if admin:
+                channel_dict.update({
+                    'admin_id': admin.id,
+                    'phone_price': admin.phone_price,
+                    'car_price': admin.car_price,
+                    'property_price': admin.property_price,
+                    'mixed_price': admin.mixed_price,
+                    'admin_username': admin.admin_username,
+                    'commission_percent': admin.commission_percent,
+                    'card_number': admin.card_number is not None,
+                    'card_holder': admin.card_holder
+                })
             result.append(channel_dict)
         return jsonify({'success': True, 'channels': result, 'count': len(result)})
     except Exception as e:
@@ -630,34 +639,45 @@ def get_payment_info(channel_id):
         if not channel:
             return jsonify({'success': False, 'error': 'Channel not found'}), 404
         
-        admin_dict = {
-            'admin_id': admin.id if admin else None,
-            'channel_id': channel.id,
-            'channel_name': channel.channel_name,
-            'admin_username': admin.admin_username if admin else None,
-            'admin_name': admin.admin_name if admin else None,
-            'phone_price': admin.phone_price if admin else 10000,
-            'car_price': admin.car_price if admin else 20000,
-            'property_price': admin.property_price if admin else 30000,
-            'mixed_price': admin.mixed_price if admin else 15000,
-            'commission_percent': admin.commission_percent if admin else 95.0,
+        result = {
+            'success': True,
+            'payment_info': {
+                'channel_id': channel.id,
+                'channel_name': channel.channel_name,
+                'channel_username': channel.channel_username,
+                'prices': {'phone': 10000, 'car': 20000, 'property': 30000, 'mixed': 15000}
+            }
         }
         
-        if admin and admin.card_number:
-            try:
-                card_number = decrypt_card(admin.card_number)
-                admin_dict['card_number'] = card_number
-                admin_dict['card_display'] = '**** **** **** ' + card_number[-4:] if len(card_number) >= 4 else card_number
-                admin_dict['card_info_status'] = 'available'
-            except:
-                admin_dict['card_display'] = 'Karta ma\'lumoti xato'
-                admin_dict['card_info_status'] = 'error'
-        else:
-            admin_dict['card_display'] = 'Kiritilmagan'
-            admin_dict['card_info_status'] = 'missing'
-            admin_dict['card_number'] = None
+        if admin:
+            result['payment_info'].update({
+                'admin_id': admin.id,
+                'admin_telegram_id': admin.admin_telegram_id,
+                'admin_username': admin.admin_username,
+                'admin_name': admin.admin_name,
+                'phone_price': admin.phone_price or 10000,
+                'car_price': admin.car_price or 20000,
+                'property_price': admin.property_price or 30000,
+                'mixed_price': admin.mixed_price or 15000,
+                'commission_percent': admin.commission_percent,
+                'prices': {
+                    'phone': admin.phone_price or 10000,
+                    'car': admin.car_price or 20000,
+                    'property': admin.property_price or 30000,
+                    'mixed': admin.mixed_price or 15000
+                }
+            })
+            
+            if admin.card_number:
+                try:
+                    card_number = decrypt_card(admin.card_number)
+                    result['payment_info']['card_number'] = card_number
+                    result['payment_info']['card_display'] = '**** **** **** ' + card_number[-4:] if len(card_number) >= 4 else card_number
+                    result['payment_info']['card_holder'] = admin.card_holder
+                except:
+                    result['payment_info']['card_display'] = 'Karta ma\'lumoti xato'
         
-        return jsonify({'success': True, 'payment_info': admin_dict})
+        return jsonify(result)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -695,7 +715,6 @@ def get_ad_details(ad_id):
             'telegram_username': ad.telegram_username,
             'status': ad.status,
             'status_text': status_texts.get(ad.status, '❓ Noma\'lum'),
-            'status_class': 'status-pending',
             'created_at': ad.created_at.isoformat() if ad.created_at else None,
             'created_date': ad.created_at.strftime('%Y-%m-%d') if ad.created_at else None,
             'published_at': ad.published_at.isoformat() if ad.published_at else None,
@@ -706,26 +725,17 @@ def get_ad_details(ad_id):
             'published_message_id': ad.published_message_id
         }
         
-        if ad.status == 'active':
-            ad_dict['status_class'] = 'status-published'
-        elif ad.status == 'expired':
-            ad_dict['status_class'] = 'status-expired'
-        
         if ad.category == 'phone':
             ad_dict['phone_model'] = ad.phone_model
             ad_dict['phone_condition'] = ad.phone_condition
-            ad_dict['display_title'] = ad.phone_model
         elif ad.category == 'car':
             ad_dict['car_model'] = ad.car_model
             ad_dict['car_year'] = ad.car_year
-            ad_dict['display_title'] = ad.car_model
         elif ad.category == 'property':
             ad_dict['property_type'] = ad.property_type
             ad_dict['property_area'] = ad.property_area
-            ad_dict['display_title'] = ad.property_type
         elif ad.category == 'mixed':
             ad_dict['title'] = ad.title
-            ad_dict['display_title'] = ad.title
         
         if ad.media_files:
             try:
@@ -737,6 +747,24 @@ def get_ad_details(ad_id):
         
         return jsonify({'success': True, 'ad': ad_dict})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/ad/<int:ad_id>', methods=['PUT'])
+@require_api_key
+def update_ad(ad_id):
+    try:
+        data = request.get_json()
+        ad = Ad.query.get(ad_id)
+        if not ad:
+            return jsonify({'success': False, 'error': 'Ad not found'}), 404
+        
+        if 'published_message_id' in data:
+            ad.published_message_id = data['published_message_id']
+        
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/create-ad', methods=['POST'])
@@ -770,7 +798,17 @@ def create_ad():
         
         admin = ChannelAdmin.query.filter_by(channel_id=channel_id, is_active=1).first()
         if not admin:
-            return jsonify({'success': False, 'error': 'Channel admin not found'}), 400
+            admin = ChannelAdmin(
+                channel_id=channel_id,
+                admin_telegram_id=0,
+                admin_username='system',
+                admin_name='System Admin',
+                commission_percent=95.0,
+                owner_percent=5.0,
+                is_active=1
+            )
+            db.session.add(admin)
+            db.session.flush()
         
         category = ad_data.get('category')
         if category == 'phone':
@@ -898,7 +936,7 @@ def upload_check():
         if file.filename == '':
             return jsonify({'success': False, 'error': 'No file selected'}), 400
         
-        if not file.content_type.startswith('image/'):
+        if not file.content_type or not file.content_type.startswith('image/'):
             return jsonify({'success': False, 'error': 'File must be an image'}), 400
         
         unique_filename = save_check_image(file, ad_id)
@@ -908,6 +946,7 @@ def upload_check():
         ad = Ad.query.get(ad_id)
         if ad:
             ad.check_image = unique_filename
+            ad.status = 'pending'
             db.session.commit()
         
         return jsonify({
@@ -1057,11 +1096,10 @@ def search_ads():
         
         result = []
         for ad in pagination.items:
-            title = ad.title or ad.phone_model or ad.car_model or ad.property_type or 'E\'lon'
             result.append({
                 'id': ad.id,
                 'category': ad.category,
-                'title': title,
+                'title': ad.title or ad.phone_model or ad.car_model or 'E\'lon',
                 'price': ad.price,
                 'location': ad.location,
                 'created_at': ad.created_at.isoformat() if ad.created_at else None
@@ -1121,19 +1159,18 @@ def admin_stats():
     try:
         from sqlalchemy import func
         
-        total_users = User.query.count()
-        total_channels = Channel.query.filter_by(is_active=1).count()
-        total_admins = ChannelAdmin.query.filter_by(is_active=1).count()
-        total_ads = Ad.query.count()
-        active_ads = Ad.query.filter_by(status='active').count()
-        pending_ads = Ad.query.filter_by(status='pending').count()
-        waiting_payment = Ad.query.filter_by(status='waiting_payment').count()
-        rejected_ads = Ad.query.filter_by(status='rejected').count()
-        expired_ads = Ad.query.filter_by(status='expired').count()
-        
-        total_income = db.session.query(func.sum(Ad.payment_amount)).filter(
-            Ad.status.in_(['active', 'expired'])
-        ).scalar() or 0
+        stats = db.session.query(
+            func.count(User.id).label('total_users'),
+            func.count(Channel.id).filter(Channel.is_active == 1).label('total_channels'),
+            func.count(ChannelAdmin.id).filter(ChannelAdmin.is_active == 1).label('total_admins'),
+            func.count(Ad.id).label('total_ads'),
+            func.count(Ad.id).filter(Ad.status == 'active').label('active_ads'),
+            func.count(Ad.id).filter(Ad.status == 'pending').label('pending_ads'),
+            func.count(Ad.id).filter(Ad.status == 'waiting_payment').label('waiting_payment'),
+            func.count(Ad.id).filter(Ad.status == 'rejected').label('rejected_ads'),
+            func.count(Ad.id).filter(Ad.status == 'expired').label('expired_ads'),
+            func.sum(Ad.payment_amount).filter(Ad.status.in_(['active', 'expired'])).label('total_income')
+        ).first()
         
         daily_stats = db.session.query(
             func.date(Ad.created_at).label('date'),
@@ -1145,18 +1182,16 @@ def admin_stats():
         return jsonify({
             'success': True,
             'stats': {
-                'total_users': total_users,
-                'total_channels': total_channels,
-                'total_admins': total_admins,
-                'total_ads': total_ads,
-                'active_ads': active_ads,
-                'pending_ads': pending_ads,
-                'waiting_payment': waiting_payment,
-                'rejected_ads': rejected_ads,
-                'expired_ads': expired_ads,
-                'total_income': total_income,
-                'active_channels': total_channels,
-                'active_admins': total_admins
+                'total_users': stats[0] or 0,
+                'total_channels': stats[1] or 0,
+                'total_admins': stats[2] or 0,
+                'total_ads': stats[3] or 0,
+                'active_ads': stats[4] or 0,
+                'pending_ads': stats[5] or 0,
+                'waiting_payment': stats[6] or 0,
+                'rejected_ads': stats[7] or 0,
+                'expired_ads': stats[8] or 0,
+                'total_income': stats[9] or 0
             },
             'daily_stats': [{'date': str(d.date), 'count': d.count} for d in daily_stats]
         })
@@ -1180,10 +1215,16 @@ def admin_channels():
                 'channel_name': ch.channel_name,
                 'channel_username': ch.channel_username,
                 'is_active': ch.is_active,
-                'ads_count': ads_count,
-                'admin_username': admin.admin_username if admin else None,
-                'admin_telegram_id': admin.admin_telegram_id if admin else None
+                'ads_count': ads_count
             }
+            if admin:
+                ch_dict.update({
+                    'admin_id': admin.id,
+                    'admin_telegram_id': admin.admin_telegram_id,
+                    'admin_username': admin.admin_username,
+                    'admin_name': admin.admin_name,
+                    'commission_percent': admin.commission_percent
+                })
             result.append(ch_dict)
         return jsonify({'success': True, 'channels': result})
     except Exception as e:
@@ -1241,10 +1282,6 @@ def add_admin():
         if not channel_id or not admin_telegram_id:
             return jsonify({'success': False, 'error': 'Channel ID and admin ID required'}), 400
         
-        channel = Channel.query.filter_by(id=channel_id).first()
-        if not channel:
-            return jsonify({'success': False, 'error': 'Channel not found'}), 404
-        
         admin = ChannelAdmin.query.filter_by(admin_telegram_id=admin_telegram_id).first()
         if admin:
             admin.channel_id = channel_id
@@ -1271,73 +1308,12 @@ def add_admin():
             user_telegram_id=admin_telegram_id,
             ad_id=0,
             type='admin_added',
-            message=f"Siz {channel.channel_name} kanaliga admin qilib tayinlandingiz!"
+            message=f"Siz {Channel.query.get(channel_id).channel_name} kanaliga admin qilib tayinlandingiz!"
         )
         
         return jsonify({'success': True, 'message': 'Admin added successfully'})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/admin/admins', methods=['GET'])
-@require_api_key
-@require_admin
-def get_admins():
-    try:
-        admins = ChannelAdmin.query.filter_by(is_active=1).all()
-        result = []
-        for admin in admins:
-            channel = Channel.query.get(admin.channel_id)
-            total_ads = Ad.query.filter_by(channel_admin_id=admin.id).count()
-            active_ads = Ad.query.filter_by(channel_admin_id=admin.id, status='active').count()
-            
-            result.append({
-                'id': admin.id,
-                'admin_telegram_id': admin.admin_telegram_id,
-                'admin_username': admin.admin_username,
-                'admin_name': admin.admin_name,
-                'channel_name': channel.channel_name if channel else None,
-                'channel_id': admin.channel_id,
-                'commission_percent': admin.commission_percent,
-                'is_active': admin.is_active,
-                'card_number': bool(admin.card_number),
-                'total_ads': total_ads,
-                'active_ads': active_ads
-            })
-        return jsonify({'success': True, 'admins': result})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/admin/income', methods=['GET'])
-@require_api_key
-@require_admin
-def get_income_stats():
-    try:
-        from sqlalchemy import func
-        
-        monthly_income = db.session.query(
-            func.strftime('%Y-%m', Ad.created_at).label('month'),
-            func.sum(Ad.payment_amount).label('total_amount'),
-            func.count(Ad.id).label('ads_count')
-        ).filter(
-            Ad.status.in_(['active', 'expired']),
-            Ad.created_at >= func.date('now', '-6 months')
-        ).group_by(func.strftime('%Y-%m', Ad.created_at)).all()
-        
-        category_income = db.session.query(
-            Ad.category,
-            func.sum(Ad.payment_amount).label('total'),
-            func.count(Ad.id).label('count')
-        ).filter(
-            Ad.status.in_(['active', 'expired'])
-        ).group_by(Ad.category).all()
-        
-        return jsonify({
-            'success': True,
-            'monthly_income': [{'month': m.month, 'total_amount': m.total_amount or 0, 'ads_count': m.ads_count} for m in monthly_income],
-            'category_income': [{'category': c.category, 'total': c.total or 0, 'count': c.count} for c in category_income]
-        })
-    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/me', methods=['GET'])
@@ -1450,7 +1426,7 @@ def get_pending_ads():
         
         ads = Ad.query.filter_by(
             channel_admin_id=admin.id,
-            status='waiting_payment'
+            status='pending'
         ).order_by(Ad.created_at.desc()).all()
         
         result = []
@@ -1492,7 +1468,9 @@ def approve_ad(ad_id):
         if not ad:
             return jsonify({'success': False, 'error': 'Ad not found'}), 404
         
-        ad.status = 'pending'
+        if ad.status != 'pending':
+            return jsonify({'success': False, 'error': 'Ad is not pending'}), 400
+        
         ad.admin_verified = 1
         db.session.commit()
         
@@ -1500,7 +1478,7 @@ def approve_ad(ad_id):
             ad_id=ad.id,
             admin_id=admin.id,
             action='approve',
-            message='To\'lov tekshirildi, e\'lon tasdiqlandi'
+            message='E\'lon tasdiqlandi'
         )
         db.session.add(verification)
         db.session.commit()
@@ -1580,27 +1558,28 @@ def get_channel_stats():
         
         thirty_days_ago = datetime.utcnow() - timedelta(days=30)
         
-        total_ads = Ad.query.filter_by(channel_admin_id=admin.id).count()
-        active_ads = Ad.query.filter_by(channel_admin_id=admin.id, status='active').count()
-        pending_ads = Ad.query.filter_by(channel_admin_id=admin.id, status='pending').count()
-        waiting_payment = Ad.query.filter_by(channel_admin_id=admin.id, status='waiting_payment').count()
-        rejected_ads = Ad.query.filter_by(channel_admin_id=admin.id, status='rejected').count()
-        
         from sqlalchemy import func
-        total_income = db.session.query(func.sum(Ad.payment_amount)).filter(
+        stats = db.session.query(
+            func.count(Ad.id).label('total_ads'),
+            func.sum(func.case((Ad.status == 'active', 1), else_=0)).label('active_ads'),
+            func.sum(func.case((Ad.status == 'pending', 1), else_=0)).label('pending_ads'),
+            func.sum(func.case((Ad.status == 'waiting_payment', 1), else_=0)).label('waiting_payment'),
+            func.sum(func.case((Ad.status == 'rejected', 1), else_=0)).label('rejected_ads'),
+            func.sum(Ad.payment_amount).label('total_income')
+        ).filter(
             Ad.channel_admin_id == admin.id,
-            Ad.status.in_(['active', 'expired'])
-        ).scalar() or 0
+            Ad.created_at >= thirty_days_ago
+        ).first()
         
         return jsonify({
             'success': True,
             'stats': {
-                'total_ads': total_ads,
-                'active_ads': active_ads,
-                'pending_ads': pending_ads,
-                'waiting_payment': waiting_payment,
-                'rejected_ads': rejected_ads,
-                'total_income': total_income
+                'total_ads': stats[0] or 0,
+                'active_ads': stats[1] or 0,
+                'pending_ads': stats[2] or 0,
+                'waiting_payment': stats[3] or 0,
+                'rejected_ads': stats[4] or 0,
+                'total_income': stats[5] or 0
             }
         })
     except Exception as e:
@@ -1711,7 +1690,7 @@ if __name__ == "__main__":
     print(f"💾 Database: {DB_ABSOLUTE_PATH}")
     print(f"📁 Media: {MEDIA_ABSOLUTE_DIR}")
     print(f"📁 Checks: {CHECKS_ABSOLUTE_DIR}")
-    print(f"🔑 API Key: {API_KEY[:20] if API_KEY else '❌'}..." if API_KEY else "🔑 API Key: ❌")
+    print(f"🔑 API Key: {API_KEY[:20]}..." if API_KEY else "🔑 API Key: ❌")
     print(f"👑 Admins: {ADMIN_IDS}")
     print("\n📌 YANGI FUNKSIYALAR:")
     print("   ✅ Kanalga e'lon yuborish (/api/publish-ad/<id>)")
